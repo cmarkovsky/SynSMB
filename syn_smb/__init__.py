@@ -2,6 +2,7 @@ from .data.preprocessing import Preprocessor
 from .data.plotting import Plotter
 from .forecast.bandpass import BandpassFilter
 from .forecast.ar import ARModel
+from .forecast.sarima import SARIMA
 from .data.smb_dataset import SMBDataSet
 
 __all__ = [
@@ -9,5 +10,6 @@ __all__ = [
     "SMBDataSet",
     "Plotter",
     "BandpassFilter",
-    "ARModel"
+    "ARModel",
+    "SARIMA"
 ]

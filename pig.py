@@ -1,11 +1,21 @@
+from matplotlib import pyplot as plt
 from syn_smb import SMBDataSet
+from pandas.plotting import autocorrelation_plot
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def main():
     reg = 'PIG'
 
     smb_ds = SMBDataSet(f"examples/data/era5_{reg}.grib")
 
-    smb_ds.forecast_smb(filt_center=1, n_years=10, plot=True)
+    # smb_ds.season_decompose()
+    smb_ds.forecast_sarima()
+    # smb_ds.plot_acf()
+    # smb_ds.plot_pacf()
+    # autocorrelation_plot(smb_ds.get_smb().values)
+    # plt.show()
+    # smb_ds.forecast_smb(filt_center=1, n_years=10, plot=True)
 
     # preprocessor = Preprocessor(f"examples/data/era5_{reg}.grib")
     # t2m, tp = preprocessor.get_data()

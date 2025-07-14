@@ -1,8 +1,6 @@
 import xarray as xr
 import pandas as pd
 from statsmodels.tsa.ar_model import AutoReg
-from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
-import matplotlib.pyplot as plt
 
 class ARModel:
     def __init__(self, data: xr.DataArray, order: int = 12, dim: str = "time", random_seed: int = 42):
@@ -74,24 +72,3 @@ class ARModel:
         
         return model_fit
 
-    def plot_pacf(self):
-        """
-        Plot the Partial Autocorrelation Function (PACF) of the data.
-        """
-
-        plot_pacf(self.data.values, lags=self.order, method='ywm')
-        plt.title(f'Partial Autocorrelation Function (PACF) for {self.data.name}')
-        plt.xlabel('Lags')
-        plt.ylabel('PACF')
-        # plt.show()
-
-    def plot_acf(self):
-        """
-        Plot the Autocorrelation Function (ACF) of the data.
-        """
-
-        plot_acf(self.data.values, lags=self.order)
-        plt.title(f'Autocorrelation Function (ACF) for {self.data.name}')
-        plt.xlabel('Lags')
-        plt.ylabel('ACF')
-        plt.show()

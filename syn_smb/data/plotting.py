@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import xarray as xr
+from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
 
 class Plotter:
     def __init__(self, smb: xr.DataArray, annual_smb: xr.DataArray, region: str = 'PIG'):
@@ -44,6 +45,26 @@ class Plotter:
         plt.ylabel('SMB (m w.e.)')
         plt.legend()
         # plt.show()
+    
+    def plot_pacf(self, data: xr.DataArray):
+        """
+        Plot the Partial Autocorrelation Function (PACF) of the data.
+        """
+
+        plot_pacf(data.values)
+        plt.title(f'Partial Autocorrelation Function (PACF) for {data.name}')
+        plt.xlabel('Lags')
+        plt.ylabel('PACF')
+
+    def plot_acf(self, data: xr.DataArray):
+        """
+        Plot the Autocorrelation Function (ACF) of the data.
+        """
+
+        plot_acf(data.values)
+        plt.title(f'Autocorrelation Function (ACF) for {data.name}')
+        plt.xlabel('Lags')
+        plt.ylabel('ACF')
     
     
     

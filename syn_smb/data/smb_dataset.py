@@ -1,8 +1,8 @@
 import xarray as xr
 import matplotlib.pyplot as plt
 import seaborn as sns
-from syn_smb import Preprocessor, BandpassFilter, Plotter, ARModel
-
+from syn_smb import Preprocessor, BandpassFilter, Plotter, ARModel, SARIMA
+from statsmodels.tsa.seasonal import seasonal_decompose
 
 class SMBDataSet(Preprocessor):
     """A class to handle the Surface Mass Balance (SMB) dataset. 
@@ -10,14 +10,14 @@ class SMBDataSet(Preprocessor):
 
     def __init__(self, data_path: str):
         self.path = data_path
-        self._set_region(self.path.split('/')[-1].split('_')[1].upper())
+        self._set_region(self.path)
         super().__init__(data_path)
         self._filters = {}
         self._filtered_smbs = {}
 
-    def _set_region(self, region: str) -> None:
+    def _set_region(self, path: str) -> None:
         """Set the region for the dataset."""
-        self.region = region
+        self.region = path.split('/')[-1].split('_')[1].split('.')[0].upper()
     
     def get_region(self):
         """Return the region of the dataset."""
@@ -73,7 +73,7 @@ class SMBDataSet(Preprocessor):
         sns.lineplot(x=self.smb['time'], y=self.smb, label='Actual SMB', color = 'tab:blue')
         sns.lineplot(x=filtered_smb['time'], y=filtered_smb, label=f'Filtered SMB - {filt_center} Year(s)', color = 'tab:orange')
         # Plot forecasted SMB data
-        sns.lineplot(x=forecasted_smb['time'], y=forecasted_smb, label='Forecasted SMB', color = 'black', linestyle='--')
+        sns.lineplot(x=forecasted_smb['time'], y=forecasted_smb, label=f'Forecasted SMB Trend - {filt_center} Year(s)', color = 'black', linestyle='--')
         plt.title(f'Actual vs Forecasted Surface Mass Balance (SMB) for {self.region}')
         plt.xlabel('Time')
         plt.ylabel('SMB (m w.e.)')
@@ -94,3 +94,51 @@ class SMBDataSet(Preprocessor):
         plotter.plot_filtered_smb(filtered_smb, n_years=n_years)
         plt.title(f'{self.region} Filtered Surface Mass Balance (SMB) - {n_years} Year(s)')
         plt.show()
+    
+    def plot_pacf(self):
+        """Plot the Partial Autocorrelation Function (PACF) of the SMB data."""
+        plotter = Plotter(self.smb, self.annual_smb, self.region)
+        plotter.plot_pacf(self.smb)
+        plt.show()
+
+    def plot_acf(self):
+        """Plot the Autocorrelation Function (ACF) of the SMB data."""
+        plotter = Plotter(self.smb, self.annual_smb, self.region)
+        plotter.plot_acf(self.smb)
+        plt.show()
+    
+    def season_decompose(self, model='additive'):
+        """Perform seasonal decomposition of the SMB data."""
+        if self.smb is None:
+            raise ValueError("SMB data is not loaded. Please load the data first.")
+        
+        decomposed = seasonal_decompose(self.smb, model=model, period=12)
+        decomposed.plot()
+        plt.title(f'Seasonal Decomposition of SMB for {self.region}')
+        plt.show()
+        return decomposed
+    
+    def adf_test(self):
+        """Perform Augmented Dickey-Fuller test on the SMB data."""
+        if self.smb is None:
+            raise ValueError("SMB data is not loaded. Please load the data first.")
+        
+        from statsmodels.tsa.stattools import adfuller
+        result = adfuller(self.smb.values, autolag='AIC')
+        print(f'ADF Statistic: {result[0]}')
+        print(f'p-value: {result[1]}')
+        print('Critical Values:')
+        for key, value in result[4].items(): # type: ignore
+            print(f'  {key}: {value}')
+        
+        return result
+    
+    def forecast_sarima(self, steps: int = 120):
+        """Forecast using the SARIMA model."""
+        if self.smb is None:
+            raise ValueError("SMB data is not loaded. Please load the data first.")
+        
+        sarima_model = SARIMA(self.smb)
+        print(sarima_model.model_fit.summary())
+        
+        return
