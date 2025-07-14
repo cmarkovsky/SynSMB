@@ -5,9 +5,7 @@ def main():
 
     smb_ds = SMBDataSet(f"examples/data/era5_{reg}.grib")
 
-    smb_ds.filter_smb(n_years=1)
-
-    smb_ds.plot_filtered_smb(n_years=1)
+    smb_ds.forecast_smb(filt_center=1, n_years=10, plot=True)
 
     # preprocessor = Preprocessor(f"examples/data/era5_{reg}.grib")
     # t2m, tp = preprocessor.get_data()

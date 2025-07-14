@@ -1,6 +1,7 @@
 import xarray as xr
 import matplotlib.pyplot as plt
-from syn_smb import Preprocessor, BandpassFilter, Plotter
+import seaborn as sns
+from syn_smb import Preprocessor, BandpassFilter, Plotter, ARModel
 
 
 class SMBDataSet(Preprocessor):
@@ -25,7 +26,7 @@ class SMBDataSet(Preprocessor):
     def filter_smb(self, n_years: int):
         """Apply a bandpass filter to the SMB data."""
         bandpass = BandpassFilter(n_years=n_years)
-        filtered_smb = bandpass.filter(self.smb_norm)
+        filtered_smb = bandpass.filter(self.smb)
         self._filters[n_years] = bandpass
         self._filtered_smbs[n_years] = filtered_smb
         return filtered_smb
@@ -47,7 +48,38 @@ class SMBDataSet(Preprocessor):
             return self._filters[n_years]
         else:
             raise ValueError(f"No filter available for {n_years} years.")
+    
+    def forecast_smb(self, filt_center: int = 1, n_years: int = 10, plot: bool = True) -> xr.DataArray:
+        """Forecast the SMB using an AR model."""
+        if filt_center not in self._filtered_smbs:
+            self.filter_smb(filt_center)
         
+        filtered_smb = self._filtered_smbs[filt_center]
+        filtered_smb_norm = self._normalize_smb(filtered_smb)
+        # Assuming ARModel is implemented to handle the forecasting
+        # ar_model = ARModel(filtered_smb_norm, order=12, dim='time')
+        ar_model = ARModel(filtered_smb, order=12, dim='time')
+
+        forecasted_smb = ar_model.forecast(steps=n_years * 12)
+        # forecasted_smb = self._unnormalize_smb(forecasted_smb)
+        if plot:
+            self.plot_forecasted_smb(filt_center, filtered_smb + self.smb_mean, forecasted_smb + self.smb_mean)
+        return forecasted_smb
+    
+    def plot_forecasted_smb(self, filt_center: int, filtered_smb: xr.DataArray, forecasted_smb: xr.DataArray):
+        """Plot the actual SMB data followed by the forecasted SMB data."""
+        plt.figure(figsize=(10, 5))
+        # Plot actual SMB data
+        sns.lineplot(x=self.smb['time'], y=self.smb, label='Actual SMB', color = 'tab:blue')
+        sns.lineplot(x=filtered_smb['time'], y=filtered_smb, label=f'Filtered SMB - {filt_center} Year(s)', color = 'tab:orange')
+        # Plot forecasted SMB data
+        sns.lineplot(x=forecasted_smb['time'], y=forecasted_smb, label='Forecasted SMB', color = 'black', linestyle='--')
+        plt.title(f'Actual vs Forecasted Surface Mass Balance (SMB) for {self.region}')
+        plt.xlabel('Time')
+        plt.ylabel('SMB (m w.e.)')
+        plt.legend()
+        plt.show()
+
     def plot_smb(self):
         """Plot the SMB and annual SMB data."""
         plotter = Plotter(self.smb_norm, self.annual_smb, self.region)
@@ -58,7 +90,7 @@ class SMBDataSet(Preprocessor):
         if n_years not in self._filtered_smbs:
             raise ValueError(f"No filtered SMB data available for {n_years} years.")
         filtered_smb = self._filtered_smbs[n_years]
-        plotter = Plotter(self.smb_norm, self.annual_smb, self.region)
+        plotter = Plotter(self.smb, self.annual_smb, self.region)
         plotter.plot_filtered_smb(filtered_smb, n_years=n_years)
         plt.title(f'{self.region} Filtered Surface Mass Balance (SMB) - {n_years} Year(s)')
         plt.show()

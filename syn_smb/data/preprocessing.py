@@ -59,6 +59,20 @@ class Preprocessor:
         mean = smb.mean(dim)
         std = smb.std(dim)
         return (smb - mean) / std
+    
+    def _unnormalize_smb(self, smb: xr.DataArray) -> xr.DataArray:
+        """
+        Unnormalize an xarray.DataArray: subtract mean, divide by std.
+        Returns a normalized DataArray with the same metadata.
+        """
+        if not isinstance(smb, xr.DataArray):
+            raise TypeError("Input must be an xarray.DataArray")
+        
+        # Calculate mean and standard deviation
+        
+        # Rescale the SMB
+        smb_scaled = (smb * self.smb_std) +  self.smb_mean
+        return smb_scaled
 
     def get_normalized_smb(self) -> xr.DataArray:
         # Return the normalized SMB

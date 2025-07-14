@@ -25,7 +25,7 @@ class Plotter:
             
 
             plt.show()
-
+    
     def plot_annual_smb(self):
         plt.figure(figsize=(10, 5))
         sns.barplot(x=self.annual_smb['year'], y=self.annual_smb)
@@ -41,7 +41,9 @@ class Plotter:
         sns.lineplot(x=self.smb['time'], y=self.smb, label='Original SMB')
         sns.lineplot(x=filtered_smb['time'], y=filtered_smb, label='Filtered SMB')
         plt.xlabel('Time')
-        plt.ylabel('Normalized SMB')
+        plt.ylabel('SMB (m w.e.)')
         plt.legend()
         # plt.show()
+    
+    
     
