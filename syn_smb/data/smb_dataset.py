@@ -1,0 +1,64 @@
+import xarray as xr
+import matplotlib.pyplot as plt
+from syn_smb import Preprocessor, BandpassFilter, Plotter
+
+
+class SMBDataSet(Preprocessor):
+    """A class to handle the Surface Mass Balance (SMB) dataset. 
+    Inherits from Preprocessor to utilize its methods for loading and processing data."""
+
+    def __init__(self, data_path: str):
+        self.path = data_path
+        self._set_region(self.path.split('/')[-1].split('_')[1].upper())
+        super().__init__(data_path)
+        self._filters = {}
+        self._filtered_smbs = {}
+
+    def _set_region(self, region: str) -> None:
+        """Set the region for the dataset."""
+        self.region = region
+    
+    def get_region(self):
+        """Return the region of the dataset."""
+        return self.region
+    
+    def filter_smb(self, n_years: int):
+        """Apply a bandpass filter to the SMB data."""
+        bandpass = BandpassFilter(n_years=n_years)
+        filtered_smb = bandpass.filter(self.smb_norm)
+        self._filters[n_years] = bandpass
+        self._filtered_smbs[n_years] = filtered_smb
+        return filtered_smb
+
+    def get_filtered_smb(self, n_years: int = -1):
+        """Retrieve the filtered SMB data for a specific number of years."""
+        if n_years == -1:
+            return self._filtered_smbs
+        elif n_years in self._filters:
+            return self._filtered_smbs[n_years]
+        else:
+            raise ValueError(f"No filtered SMB data available for {n_years} years.")
+
+    def get_filters(self, n_years: int = -1):
+        """Return the available filters."""
+        if n_years == -1:
+            return self._filters
+        elif n_years in self._filters:
+            return self._filters[n_years]
+        else:
+            raise ValueError(f"No filter available for {n_years} years.")
+        
+    def plot_smb(self):
+        """Plot the SMB and annual SMB data."""
+        plotter = Plotter(self.smb_norm, self.annual_smb, self.region)
+        plotter.plot_smb()
+    
+    def plot_filtered_smb(self, n_years: int):
+        """Plot the filtered SMB data."""
+        if n_years not in self._filtered_smbs:
+            raise ValueError(f"No filtered SMB data available for {n_years} years.")
+        filtered_smb = self._filtered_smbs[n_years]
+        plotter = Plotter(self.smb_norm, self.annual_smb, self.region)
+        plotter.plot_filtered_smb(filtered_smb, n_years=n_years)
+        plt.title(f'{self.region} Filtered Surface Mass Balance (SMB) - {n_years} Year(s)')
+        plt.show()

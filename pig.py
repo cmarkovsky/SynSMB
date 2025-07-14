@@ -1,22 +1,29 @@
-from syn_smb import Preprocessor, Plotter, BandpassFilter
+from syn_smb import SMBDataSet
 
 def main():
     reg = 'PIG'
-    preprocessor = Preprocessor(f"examples/data/era5_{reg}.grib")
-    t2m, tp = preprocessor.get_data()
-    print(f"Loaded datasets for {reg}:")
 
-    smb = preprocessor.get_smb()
-    smb_norm = preprocessor.get_normalized_smb()
-    print(f"Calculated SMB for {reg}: {smb}")
-    annual_smb = preprocessor.get_annual_smb()
+    smb_ds = SMBDataSet(f"examples/data/era5_{reg}.grib")
 
-    plotter = Plotter(smb_norm, annual_smb)
+    smb_ds.filter_smb(n_years=1)
 
-    bandpass = BandpassFilter(n_years=1)
-    filtered_smb = bandpass.filter(smb_norm)
+    smb_ds.plot_filtered_smb(n_years=1)
 
-    plotter.plot_filtered_smb(filtered_smb)
+    # preprocessor = Preprocessor(f"examples/data/era5_{reg}.grib")
+    # t2m, tp = preprocessor.get_data()
+    # print(f"Loaded datasets for {reg}:")
+
+    # smb = preprocessor.get_smb()
+    # smb_norm = preprocessor.get_normalized_smb()
+    # print(f"Calculated SMB for {reg}: {smb}")
+    # annual_smb = preprocessor.get_annual_smb()
+
+    # plotter = Plotter(smb_norm, annual_smb)
+
+    # bandpass = BandpassFilter(n_years=1)
+    # filtered_smb = bandpass.filter(smb_norm)
+
+    # plotter.plot_filtered_smb(filtered_smb)
     # print(f"Calculated annual SMB for {reg}: {annual_smb}")
     # smb_norm = preprocessor.get_normalized_smb()
     # print(f"Normalized SMB for {reg}: {smb_norm}")

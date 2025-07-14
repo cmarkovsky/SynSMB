@@ -34,15 +34,14 @@ class Plotter:
         plt.ylabel('Annual SMB (m w.e.)')
         plt.show()
 
-    def plot_filtered_smb(self, filtered_smb: xr.DataArray):
+    def plot_filtered_smb(self, filtered_smb: xr.DataArray, n_years: int):
 
         sns.set_theme(style="whitegrid")
         plt.figure(figsize=(10, 5))
         sns.lineplot(x=self.smb['time'], y=self.smb, label='Original SMB')
         sns.lineplot(x=filtered_smb['time'], y=filtered_smb, label='Filtered SMB')
-        plt.title('Filtered Surface Mass Balance (SMB)')
         plt.xlabel('Time')
-        plt.ylabel('Filtered SMB (m w.e.)')
+        plt.ylabel('Normalized SMB')
         plt.legend()
-        plt.show()
+        # plt.show()
     

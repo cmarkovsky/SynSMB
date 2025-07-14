@@ -1,5 +1,4 @@
 import xarray as xr
-import numpy as np
 import pandas as pd
 from statsmodels.tsa.ar_model import AutoReg
 from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
