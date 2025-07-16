@@ -9,8 +9,9 @@ def main():
 
     smb_ds = SMBDataSet(f"examples/data/era5_{reg}.grib")
 
+    smb_ds.forecast_ar(filt_center=1, n_years=100, plot=True)
     # smb_ds.season_decompose()
-    smb_ds.forecast_sarima()
+    # smb_ds.forecast_sarima()
     # smb_ds.plot_acf()
     # smb_ds.plot_pacf()
     # autocorrelation_plot(smb_ds.get_smb().values)

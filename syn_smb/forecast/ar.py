@@ -1,6 +1,7 @@
 import xarray as xr
 import pandas as pd
 from statsmodels.tsa.ar_model import AutoReg
+import numpy as np
 
 class ARModel:
     def __init__(self, data: xr.DataArray, order: int = 12, dim: str = "time", random_seed: int = 42):
@@ -12,7 +13,7 @@ class ARModel:
         self.dim = dim
         self.model_fit = self._fit()
 
-    def forecast(self, steps: int = 120):
+    def forecast(self, steps: int = 120, add_noise: bool = True) -> xr.DataArray:
         """
         Generate forecasts from the fitted AR model.
         """
@@ -24,6 +25,9 @@ class ARModel:
         
 
         forecast_values = self.model_fit.predict(start=len(self.data), end=len(self.data) + steps - 1)
+        if add_noise:
+            noise = np.random.normal(loc=0, scale=self.data.std(), size=steps)
+            forecast_values += noise
         # Time coordinate generation
         dt = pd.infer_freq(self.data[self.dim].to_pandas()) # type: ignore
         if dt is None:

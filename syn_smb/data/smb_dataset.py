@@ -1,7 +1,7 @@
 import xarray as xr
 import matplotlib.pyplot as plt
 import seaborn as sns
-from syn_smb import Preprocessor, BandpassFilter, Plotter, ARModel, SARIMA
+from syn_smb import Preprocessor, BandpassFilter, Plotter, ARModel, SARIMA, GaussianNoise
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 class SMBDataSet(Preprocessor):
@@ -14,6 +14,7 @@ class SMBDataSet(Preprocessor):
         super().__init__(data_path)
         self._filters = {}
         self._filtered_smbs = {}
+        self._forcasted_smbs = {}
 
     def _set_region(self, path: str) -> None:
         """Set the region for the dataset."""
@@ -49,7 +50,7 @@ class SMBDataSet(Preprocessor):
         else:
             raise ValueError(f"No filter available for {n_years} years.")
     
-    def forecast_smb(self, filt_center: int = 1, n_years: int = 10, plot: bool = True) -> xr.DataArray:
+    def forecast_ar(self, filt_center: int = 1, n_years: int = 10, plot: bool = True) -> xr.DataArray:
         """Forecast the SMB using an AR model."""
         if filt_center not in self._filtered_smbs:
             self.filter_smb(filt_center)
@@ -73,7 +74,7 @@ class SMBDataSet(Preprocessor):
         sns.lineplot(x=self.smb['time'], y=self.smb, label='Actual SMB', color = 'tab:blue')
         sns.lineplot(x=filtered_smb['time'], y=filtered_smb, label=f'Filtered SMB - {filt_center} Year(s)', color = 'tab:orange')
         # Plot forecasted SMB data
-        sns.lineplot(x=forecasted_smb['time'], y=forecasted_smb, label=f'Forecasted SMB Trend - {filt_center} Year(s)', color = 'black', linestyle='--')
+        sns.lineplot(x=forecasted_smb['time'], y=forecasted_smb, label=f'Forecasted SMB Trend - {filt_center} Year(s)', color = 'black', linestyle='--', linewidth=1)
         plt.title(f'Actual vs Forecasted Surface Mass Balance (SMB) for {self.region}')
         plt.xlabel('Time')
         plt.ylabel('SMB (m w.e.)')
@@ -133,12 +134,41 @@ class SMBDataSet(Preprocessor):
         
         return result
     
-    def forecast_sarima(self, steps: int = 120):
+    def forecast_sarima(self, steps: int = 120, plot: bool = True) -> xr.DataArray:
         """Forecast using the SARIMA model."""
         if self.smb is None:
             raise ValueError("SMB data is not loaded. Please load the data first.")
         
         sarima_model = SARIMA(self.smb)
-        print(sarima_model.model_fit.summary())
+        forecasted_smb = sarima_model.forecast_sarima_xr(self.smb, steps=steps)
+        print(forecasted_smb)
+        # if plot:
+        #     self.plot_forecasted_smb(
+        #         filt_center=1, 
+        #         filtered_smb=self.smb, 
+        #         forecasted_smb=forecasted_smb
+        #     )
         
-        return
+        return forecasted_smb
+
+    def GaussianForecast(self, filt_center: int = 1) -> xr.DataArray:
+        """Add Gaussian noise to the SMB data."""
+        if filt_center not in self._filtered_smbs:
+            self.filter_smb(filt_center)
+        filtered_smb = self._filtered_smbs[filt_center]
+        # self.plot_filtered_smb(filt_center)
+
+        gaussian_noise = GaussianNoise(filtered_smb)
+        noisy_smb = gaussian_noise.forecast(steps=120)  # Forecasting
+        
+        self.plot_forecasted_smb(
+            filt_center=filt_center, 
+            filtered_smb=filtered_smb + self.smb_mean, 
+            forecasted_smb=noisy_smb + self.smb_mean
+        )
+
+
+        # gaussian_noise = GaussianNoise(mean=0.0, stddev=1.0)
+        # noisy_smb = gaussian_noise(self.smb)
+        # return noisy_smb
+        return noisy_smb
