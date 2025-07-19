@@ -96,6 +96,12 @@ class SMBDataSet(Preprocessor):
         plt.title(f'{self.region} Filtered Surface Mass Balance (SMB) - {n_years} Year(s)')
         plt.show()
     
+    def plot_filtered_smbs(self):
+        """Plot all filtered SMB data."""
+        plotter = Plotter(self.smb, self.annual_smb, self.region)
+        plotter.plot_filtered_smbs(self._filtered_smbs)
+        plt.show()
+    
     def plot_pacf(self):
         """Plot the Partial Autocorrelation Function (PACF) of the SMB data."""
         plotter = Plotter(self.smb, self.annual_smb, self.region)

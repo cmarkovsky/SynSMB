@@ -65,6 +65,26 @@ class Plotter:
         plt.title(f'Autocorrelation Function (ACF) for {data.name}')
         plt.xlabel('Lags')
         plt.ylabel('ACF')
+
+    def plot_filtered_smbs(self, filtered_smbs: dict):
+        """
+        Plot all filtered SMB data.
+        """
+        sns.set_theme(style="whitegrid")
+        fig, axes = plt.subplots(nrows= len(filtered_smbs), figsize=(12, 6))
+
+        for ax, (n_years, filtered_smb) in zip(axes, filtered_smbs.items()):
+            sns.lineplot(x=self.smb['time'], y=self.smb, ax=ax, label='Original SMB')
+            ax.set_title(f'Filtered SMB - {n_years} Year(s)')
+            sns.lineplot(x=filtered_smb['time'], y=filtered_smb, ax=ax, label=f'Filtered SMB - {n_years} Year(s)')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('SMB (m w.e.)')
+            ax.set_title(f'Filtered SMB - {n_years} Year(s)')
+
+        plt.tight_layout()
+        plt.ylabel('SMB (m w.e.)')
+        plt.legend()
+        # plt.show()
     
     
     

@@ -12,10 +12,8 @@ def main():
     # smb_ds.forecast_ar(filt_center=1, n_years=100, plot=True)
     smb_ds.filter_smb(n_years=1)
     smb_ds.filter_smb(n_years=10)
-    smb_ds.filter_smb(n_years=100)
-    # filtered_smb1 = smb_ds.get_filtered_smb(n_years=1)
-    # filtered_smb10 = smb_ds.get_filtered_smb(n_years=10)
-    # filtered_smb100 = smb_ds.get_filtered_smb(n_years=100)
+    filtered_smb1 = smb_ds.get_filtered_smb(n_years=1)
+    filtered_smb10 = smb_ds.get_filtered_smb(n_years=10)
     smb_ds.plot_filtered_smbs()
     
     # smb_ds.season_decompose()
