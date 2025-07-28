@@ -35,12 +35,16 @@ class Plotter:
         plt.ylabel('Annual SMB (m w.e.)')
         plt.show()
 
-    def plot_filtered_smb(self, filtered_smb: xr.DataArray, n_years: int):
+    def plot_filtered_smb(self, filtered_smb: xr.DataArray, n_years: int, annual: bool = False):
 
         sns.set_theme(style="whitegrid")
         plt.figure(figsize=(10, 5))
-        sns.lineplot(x=self.smb['time'], y=self.smb, label='Original SMB')
-        sns.lineplot(x=filtered_smb['time'], y=filtered_smb, label='Filtered SMB')
+        if annual:
+            sns.lineplot(x=self.annual_smb['year'], y=self.annual_smb, label='Original Annual SMB')
+            sns.lineplot(x=filtered_smb['year'], y=filtered_smb, label=f'Filtered SMB - {n_years} Year(s)', color='tab:orange')
+        else:
+            sns.lineplot(x=self.smb['time'], y=self.smb, label='Original SMB')
+            sns.lineplot(x=filtered_smb['time'], y=filtered_smb + self.smb.mean(dim='time'), label='Filtered SMB')
         plt.xlabel('Time')
         plt.ylabel('SMB (m w.e.)')
         plt.legend()
@@ -71,15 +75,15 @@ class Plotter:
         Plot all filtered SMB data.
         """
         sns.set_theme(style="whitegrid")
-        fig, axes = plt.subplots(nrows= len(filtered_smbs), figsize=(12, 6))
+        fig, axes = plt.subplots(nrows= len(filtered_smbs), figsize=(12, 8), sharex=True)
 
         for ax, (n_years, filtered_smb) in zip(axes, filtered_smbs.items()):
             sns.lineplot(x=self.smb['time'], y=self.smb, ax=ax, label='Original SMB')
             ax.set_title(f'Filtered SMB - {n_years} Year(s)')
-            sns.lineplot(x=filtered_smb['time'], y=filtered_smb, ax=ax, label=f'Filtered SMB - {n_years} Year(s)')
+            sns.lineplot(x=filtered_smb['time'], y=filtered_smb + self.smb.mean(dim='time'), ax=ax, label=f'Filtered SMB - {n_years} Year(s)')
             ax.set_xlabel('Time')
             ax.set_ylabel('SMB (m w.e.)')
-            ax.set_title(f'Filtered SMB - {n_years} Year(s)')
+            ax.set_title(f'')
 
         plt.tight_layout()
         plt.ylabel('SMB (m w.e.)')

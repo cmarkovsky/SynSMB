@@ -4,6 +4,7 @@ from .forecast.bandpass import BandpassFilter
 from .forecast.ar import ARModel
 from .forecast.sarima import SARIMA
 from .forecast.gaussian_noise import GaussianNoise
+from .forecast.generator import Generator
 from .data.smb_dataset import SMBDataSet
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "BandpassFilter",
     "ARModel",
     "SARIMA",
-    "GaussianNoise"
+    "GaussianNoise",
+    "Generator"
 ]

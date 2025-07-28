@@ -23,33 +23,42 @@ class SMBDataSet(Preprocessor):
     def get_region(self):
         """Return the region of the dataset."""
         return self.region
-    
-    def filter_smb(self, n_years: int):
+
+    def filter_smb(self, filt_center: int, annual: bool = False) -> xr.DataArray:
         """Apply a bandpass filter to the SMB data."""
-        bandpass = BandpassFilter(n_years=n_years)
-        filtered_smb = bandpass.filter(self.smb)
-        self._filters[n_years] = bandpass
-        self._filtered_smbs[n_years] = filtered_smb
+        if filt_center in self._filters:
+            return self._filtered_smbs[filt_center]
+        if annual:
+            smb = self.get_annual_smb()
+            dim = 'year'
+        else:
+            smb = self.get_smb()
+            dim = 'time'
+        bandpass = BandpassFilter(filt_center=filt_center, dim=dim)
+
+        filtered_smb = bandpass.filter(smb)
+        self._filters[filt_center] = bandpass
+        self._filtered_smbs[filt_center] = filtered_smb
         return filtered_smb
 
-    def get_filtered_smb(self, n_years: int = -1):
+    def get_filtered_smb(self, filt_center: int = -1):
         """Retrieve the filtered SMB data for a specific number of years."""
-        if n_years == -1:
+        if filt_center == -1:
             return self._filtered_smbs
-        elif n_years in self._filters:
-            return self._filtered_smbs[n_years]
+        elif filt_center in self._filters:
+            return self._filtered_smbs[filt_center]
         else:
-            raise ValueError(f"No filtered SMB data available for {n_years} years.")
+            raise ValueError(f"No filtered SMB data available for {filt_center} years.")
 
-    def get_filters(self, n_years: int = -1):
+    def get_filtered_smbs(self, filt_center: int = -1):
         """Return the available filters."""
-        if n_years == -1:
+        if filt_center == -1:
             return self._filters
-        elif n_years in self._filters:
-            return self._filters[n_years]
+        elif filt_center in self._filters:
+            return self._filters[filt_center]
         else:
-            raise ValueError(f"No filter available for {n_years} years.")
-    
+            raise ValueError(f"No filter available for {filt_center} years.")
+
     def forecast_ar(self, filt_center: int = 1, n_years: int = 10, plot: bool = True) -> xr.DataArray:
         """Forecast the SMB using an AR model."""
         if filt_center not in self._filtered_smbs:
@@ -85,18 +94,18 @@ class SMBDataSet(Preprocessor):
         """Plot the SMB and annual SMB data."""
         plotter = Plotter(self.smb_norm, self.annual_smb, self.region)
         plotter.plot_smb()
-    
-    def plot_filtered_smb(self, n_years: int):
+
+    def plot_filtered_smb(self, filt_center: int, annual: bool = False):
         """Plot the filtered SMB data."""
-        if n_years not in self._filtered_smbs:
-            raise ValueError(f"No filtered SMB data available for {n_years} years.")
-        filtered_smb = self._filtered_smbs[n_years]
+        if filt_center not in self._filtered_smbs:
+            raise ValueError(f"No filtered SMB data available for {filt_center} years.")
+        filtered_smb = self._filtered_smbs[filt_center]
         plotter = Plotter(self.smb, self.annual_smb, self.region)
-        plotter.plot_filtered_smb(filtered_smb, n_years=n_years)
-        plt.title(f'{self.region} Filtered Surface Mass Balance (SMB) - {n_years} Year(s)')
+        plotter.plot_filtered_smb(filtered_smb, n_years=filt_center, annual=annual)
+        plt.title(f'{self.region} Filtered Surface Mass Balance (SMB) - {filt_center} Year(s)')
         plt.show()
     
-    def plot_filtered_smbs(self):
+    def plot_filtered_smbs(self, annual: bool = False):
         """Plot all filtered SMB data."""
         plotter = Plotter(self.smb, self.annual_smb, self.region)
         plotter.plot_filtered_smbs(self._filtered_smbs)

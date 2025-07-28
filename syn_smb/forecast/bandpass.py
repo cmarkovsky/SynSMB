@@ -6,7 +6,7 @@ import numpy as np
 class BandpassFilter:
     def __init__(
         self,
-        n_years: int,
+        filt_center: int,
         factor: float = np.sqrt(2),
         sample_rate: float = 1.0,
         dim: str = "time",
@@ -14,7 +14,7 @@ class BandpassFilter:
         """
         Initialize the BandpassFilter with the given parameters.
         """
-        self.n_years = n_years
+        self.filt_center = filt_center
         self.factor = factor
         self.sample_rate = sample_rate
         self.dim = dim
@@ -24,8 +24,8 @@ class BandpassFilter:
     def _calc_periods(self):
         # Calculate the periods for the bandpass filter
 
-        low_period = self.n_years * 12 / self.factor  # Low frequency period
-        high_period = self.n_years * 12 * self.factor  # High frequency period
+        low_period = self.filt_center * 12 / self.factor  # Low frequency period
+        high_period = self.filt_center * 12 * self.factor  # High frequency period
         return low_period, high_period
 
     def filter(self, data: xr.DataArray, order: int = 4):
