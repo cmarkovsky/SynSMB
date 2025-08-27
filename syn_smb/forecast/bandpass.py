@@ -7,7 +7,7 @@ class BandpassFilter:
     def __init__(
         self,
         filt_center: int,
-        factor: float = np.sqrt(2),
+        alpha: float = np.sqrt(2),
         sample_rate: float = 1.0,
         dim: str = "time",
     ):
@@ -15,18 +15,17 @@ class BandpassFilter:
         Initialize the BandpassFilter with the given parameters.
         """
         self.filt_center = filt_center
-        self.factor = factor
+        self.alpha = alpha
         self.sample_rate = sample_rate
         self.dim = dim
-        self.low_period, self.high_period = self._calc_periods()
-        self.low_freq, self.high_freq = 1 / self.high_period, 1 / self.low_period
+        self.low_freq, self.high_freq = self._calc_freqs()
 
-    def _calc_periods(self):
-        # Calculate the periods for the bandpass filter
+    def _calc_freqs(self):
+        # Calculate the frequencies for the bandpass filter
 
-        low_period = self.filt_center * 12 / self.factor  # Low frequency period
-        high_period = self.filt_center * 12 * self.factor  # High frequency period
-        return low_period, high_period
+        low_freq = 1 / (self.filt_center * 12 * self.alpha)  # Low frequency
+        high_freq = 1 / (self.filt_center * 12 / self.alpha)  # High frequency
+        return low_freq, high_freq
 
     def filter(self, data: xr.DataArray, order: int = 4):
         """
@@ -60,3 +59,11 @@ class BandpassFilter:
 
         filtered.attrs.update(data.attrs)  # Preserve original attributes
         return filtered
+
+    def get_filter_params(self):
+        return {
+            "filt_center": self.filt_center,
+            "alpha": self.alpha,
+            "low_freq": self.low_freq,
+            "high_freq": self.high_freq,
+        }

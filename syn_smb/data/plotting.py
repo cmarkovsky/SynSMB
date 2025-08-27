@@ -29,7 +29,7 @@ class Plotter:
     
     def plot_annual_smb(self):
         plt.figure(figsize=(10, 5))
-        sns.barplot(x=self.annual_smb['year'], y=self.annual_smb)
+        sns.lineplot(x=self.annual_smb['year'], y=self.annual_smb)
         plt.title('Annual Surface Mass Balance (SMB)')
         plt.xlabel('Year')
         plt.ylabel('Annual SMB (m w.e.)')

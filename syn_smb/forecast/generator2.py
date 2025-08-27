@@ -5,10 +5,9 @@ from syn_smb import BandpassFilter
 from statsmodels.tsa.ar_model import AutoReg
 from scipy.signal import welch
 import seaborn as sns
-
 # from syn_smb.forecast.bandpass import BandpassFilter
 
-class Generator:
+class Generator2:
     def __init__(self, 
                  smb: xr.DataArray,
                  n_years: int = 100,
@@ -42,8 +41,10 @@ class Generator:
 
     def generate_smb(self, plot: bool = True) -> xr.DataArray:
 
-        synthetic_hf = self.generate_hf(plot=True)
-        synthetic_lf = self.generate_lf(plot=True)
+        synthetic_hf = self.generate_hf(plot=False)
+        synthetic_lf = self.generate_lf2(plot=False)
+       
+
         synthetic_smb = synthetic_hf + synthetic_lf + self.smb.mean(dim=self.dim)
         if plot:
             # Plot the original and synthetic SMB data
@@ -81,19 +82,23 @@ class Generator:
 
         phi, intercept, sigma = self._fit_ar()
         # Generate synthetic high-frequency data
-        synthetic_hf = self._generate(phi, intercept, sigma)
+        hf_syn = self._generate(phi, intercept, sigma)
         # Apply the high-frequency bandpass filter
         hf_filter = BandpassFilter(filt_center=1, dim=self.dim)
-        hf_filtered = hf_filter.filter(synthetic_hf)
+        print(hf_filter.get_filter_params())
+        hf_syn_filt = hf_filter.filter(hf_syn)
+
+        hf_filt = hf_filter.filter(self.smb)
+        self.analyze_psd(hf_filt, hf_syn_filt, "Synthetic HF")
 
         lf_filter = BandpassFilter(filt_center=10, dim=self.dim)
-        lf_filtered = lf_filter.filter(synthetic_hf)
+        lf_filtered = lf_filter.filter(hf_syn)
 
         if plot:
             # Plot the original and filtered synthetic high-frequency data
             plt.figure(figsize=(10, 5))
-            sns.lineplot(x=synthetic_hf[self.dim], y=synthetic_hf, label='Synthetic HF (raw)', alpha=0.7)
-            sns.lineplot(x=hf_filtered[self.dim], y=hf_filtered, label='Synthetic HF (filtered)', alpha=0.7)
+            sns.lineplot(x=hf_syn[self.dim], y=hf_syn, label='Synthetic HF (raw)', alpha=0.7)
+            sns.lineplot(x=hf_syn_filt[self.dim], y=hf_syn_filt, label='Synthetic HF (filtered)', alpha=0.7)
             sns.lineplot(x=lf_filtered[self.dim], y=lf_filtered, label='Synthetic LF (filtered)', alpha=0.7, color='tab:red')
             plt.xlabel(self.dim)
             plt.ylabel('SMB (m w.e.)')
@@ -102,7 +107,7 @@ class Generator:
             plt.tight_layout()
             plt.show()
 
-        return hf_filtered
+        return hf_syn_filt
         # b_hf, a_hf = butter(4, [self.hf_band[0], self.hf_band[1]], btype='band')
 
     def _generate(self, phi, intercept, sigma) -> xr.DataArray:
@@ -144,7 +149,23 @@ class Generator:
 
         return phi, intercept, sigma
 
-        
+    def _fit_ar2(self, filtered_data: xr.DataArray):
+        """
+        Fit a second AutoRegressive (AR) model to the SMB data.
+        """
+        # Drop NaN values along the specified dimension
+        data = filtered_data.dropna(self.dim)
+
+        # Convert the DataArray to a numpy array for AR model fitting
+        values = data.values
+
+        # Fit the AR model
+        model = AutoReg(values, lags=2, old_names=False).fit()
+        phi = model.params[1]
+        intercept = model.params[0]
+        sigma = np.std(model.resid)
+
+        return phi, intercept, sigma
 
     def _generate_spectral_match(self, n: int) -> xr.DataArray:
         """
@@ -186,7 +207,36 @@ class Generator:
             plt.show()
         return synthetic_lf
     
+    def generate_lf2(self, plot: bool = True) -> xr.DataArray:
+        # synthetic_lf = self._generate_spectral_match(self.n_years * 12)
+        # Apply the low-frequency bandpass filter
+        
+        lf_filter = BandpassFilter(filt_center=10, dim=self.dim)
+        print(lf_filter.get_filter_params())
+        lf_filtered = lf_filter.filter(self.smb)
 
+        var_lf_obs = np.var(lf_filtered)
+
+        np.random.seed(self.seed + 3)
+        white_noise = xr.DataArray(np.random.normal(0, 1, self.n_years * 12), dims=[self.dim])
+        smb_lf_syn = BandpassFilter(filt_center=10, dim=self.dim).filter(white_noise)
+        synthetic_lf = smb_lf_syn * np.sqrt(var_lf_obs / np.var(smb_lf_syn))
+
+        self.analyze_psd(lf_filtered, synthetic_lf, "Synthetic LF")
+
+        # synthetic_lf *= np.sqrt(var_lf_obs / np.var(synthetic_lf))  # Scale to match the variance of the low-frequency band
+
+        if plot:
+            # Plot the original and synthetic low-frequency data
+            plt.figure(figsize=(10, 5))
+            sns.lineplot(x=synthetic_lf[self.dim], y=synthetic_lf, label='Synthetic LF', alpha=0.7)
+            plt.xlabel(self.dim)
+            plt.ylabel('SMB (m w.e.)')
+            plt.title('Original vs Synthetic Low-Frequency SMB')
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+        return synthetic_lf
     def plot_smb_components(self):
         """
         Plot the high-frequency and low-frequency components of the SMB data.
@@ -236,20 +286,25 @@ class Generator:
         lf_filter.filter(smb)
 
         return hf_filter.filter(smb), lf_filter.filter(smb)
-        # High-frequency component
-    # def calc_components(self, smb: xr.DataArray) -> tuple[xr.DataArray, xr.DataArray]:
-    #     """
-    #     Calculate the high-frequency and low-frequency components of the synthetic data.
-    #     """
-    #     # High-frequency component
-    #     b_hf, a_hf = butter(4, [self.hf_band[0] / self.nyquist, self.hf_band[1] / self.nyquist], btype='band') # type: ignore
+    
 
-    #     hf_component = filtfilt(b_hf, a_hf, smb.values)
-    #     hf_component = xr.DataArray(hf_component, coords=smb.coords, dims=smb.dims)
+    def analyze_psd(self, observed_data: xr.DataArray, synthetic_data: xr.DataArray, label: str):
+        """
+        Analyze and plot the Power Spectral Density (PSD) of the given data.
+        """
+        f_obs, Pxx_obs = welch(observed_data.values, fs=1/self.dt, nperseg=min(len(observed_data), 512))
+        f_syn, Pxx_syn = welch(synthetic_data.values, fs=1/self.dt, nperseg=min(len(synthetic_data), 512))
+        plt.figure(figsize=(10, 5))
+        plt.loglog(f_obs, Pxx_obs, label="Observed", color="black")
+        plt.semilogy(f_syn, Pxx_syn, label="Synthetic", color="blue", alpha=0.7)
+        plt.axvspan(12/16.97, 12/8.48, color='orange', alpha=0.1, label="HF band")
+        plt.axvspan(12/169.71, 12/84.85, color='red', alpha=0.1, label="LF band")
+        # plt.axvspan(1/300/12, 1/50/12, color='purple', alpha=0.1, label="Centennial band")
+        plt.xlabel("Frequency (cycles/year)")
+        plt.ylabel("Power")
+        plt.title("Power Spectrum Comparison")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
 
-    #     # Low-frequency component
-    #     b_lf, a_lf = butter(4, [self.lf_band[0] / self.nyquist, self.lf_band[1] / self.nyquist], btype='band') # type: ignore
-    #     lf_component = filtfilt(b_lf, a_lf, smb.values)
-    #     lf_component = xr.DataArray(lf_component, coords=smb.coords, dims=smb.dims)
-
-    #     return hf_component, lf_component
