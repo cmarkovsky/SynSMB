@@ -1,0 +1,34 @@
+# Data — never commit raw or processed data
+data/raw/
+data/processed/
+data/validation/
+*.nc
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# Poetry
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Outputs and figures (optional — commit these if you want version-controlled figures)
+figures/
