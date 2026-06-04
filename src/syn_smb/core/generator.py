@@ -1,272 +1,495 @@
-import xarray as xr
+"""
+generator.py
+============
+SMBGenerator: orchestrates the complete 1D synthetic SMB pipeline.
+
+Wraps Preprocessor, GaussianTransform, SpectralSynthesizer, and
+Experiment into a single fit/generate interface. This is the primary
+user-facing object for synthetic SMB production.
+
+Pipeline (forward — fit time):
+    SMB DataArray
+        → Preprocessor.fit_transform()    removes trend + seasonal cycle
+        → GaussianTransform.fit()          learns empirical distribution
+        → GaussianTransform.transform()    maps residuals to N(0,1)
+        → SpectralSynthesizer.fit()        estimates PSD
+
+Pipeline (inverse — generate time):
+    SpectralSynthesizer.synthesize()      phase-randomised N(0,1) ensemble
+        → GaussianTransform.inverse_transform()  back to zero-mean residuals
+        → + smb_mean                             restores observed mean
+        → Preprocessor.inverse_transform()       restores seasonal cycle
+        → xr.Dataset                             ready for Icepack
+"""
+
+from __future__ import annotations
+
 from pathlib import Path
-from syn_smb.core.generator_utils import *
-# from syn_smb.plotting_utils import *
-# from syn_smb3.ensemble_utils import *
-from statsmodels.tsa.stattools import acf
-import pandas as pd
+import numpy as np
+import xarray as xr
+
+from syn_smb.core.preprocessor import Preprocessor
+from syn_smb.core.gaussianize import GaussianTransform
+from syn_smb.core.spectral import SpectralSynthesizer
+from syn_smb.core.experiment import Experiment
+from syn_smb.core.data_loader import SMBDataLoader
+
 
 class SMBGenerator:
+    """
+    Orchestrates the complete 1D synthetic SMB generation pipeline.
 
-    def __init__(self, smb_path: str, smb_var = "smbgl", detrend = True, gaussianize = True, psd_method = "welch") -> None:
-        self.smb_path = Path(smb_path)
-        self.smb_var = smb_var
-        self.smb = load_data(self.smb_path, smb_var=self.smb_var)
-        self.smb_mean = self.smb.mean().item()
-        self.detrend = detrend
-        self.gaussianize = gaussianize
-        self.psd_method = psd_method
-        self.detrend_smb()
-        self.gaussianize_smb()
-        self.obs_freqs, self.obs_psd = estimate_psd(self.g_resid, method=self.psd_method)
-        # self.bands = self.create_band_factors()
+    Parameters
+    ----------
+    nperseg : int
+        Welch segment length for PSD estimation. Default 60 (5-year
+        segments for monthly data).
+    dt_years : float
+        Sampling interval in years. Default 1/12 for monthly data.
+    remove_trend : bool
+        Whether Preprocessor removes the linear trend. Default True.
+    remove_seasonal : bool
+        Whether Preprocessor removes the monthly climatology. Default True.
 
-    def detrend_smb(self) -> None:
-        self.smb_centered = self.smb - self.smb_mean
-        if self.detrend:
-            self.resid, self.trend = detrend_linear(self.smb_centered)
-            self.smb_detrended = self.resid + self.smb_mean
-        else:
-            self.resid = self.smb_centered
-            self.trend = None
+    Attributes
+    ----------
+    preprocessor : Preprocessor
+    gaussian_transform : GaussianTransform
+    spectral_synthesizer : SpectralSynthesizer
+    smb_mean : float
+        Observed time-mean SMB. Added back once in generate().
+    smb_start_year : int
+        First year of the observed record. Used to anchor synthetic
+        time coordinates.
+    n_obs : int
+        Number of observed time steps.
+    is_fitted : bool
 
-    def gaussianize_smb(self) -> None:
-        self.g_resid, self.u = gaussian_rank_transform(self.resid)
-        self.inv_cdf = build_empirical_inv_cdf(self.resid)
-        self.inv_cdf_resid = self.inv_cdf(self.resid.values)
+    Examples
+    --------
+    >>> gen = SMBGenerator()
+    >>> gen.fit(smb_dataarray)
+    >>> dataset = gen.generate(Experiment.baseline())
+    >>> datasets = gen.generate_suite(Experiment.standard_suite())
+    """
 
-    def create_band_factors(self, ann_min: float = 0.8, ann_max: float = 1.5, ann_factor: float = 1.0, dec_min: float = 8, dec_max: float = 20, dec_factor: float = 1.0) -> dict[str, tuple[float,float,float]]:
-        """
-        Create band factors for scaling PSD in specified frequency bands.
-        Returns list of tuples (fmin, fmax, factor).
-        """
-        def period_to_freq_bounds(pmin, pmax):
-            fmax = 1.0 / pmin
-            fmin = 1.0 / pmax
-            return fmin, fmax
-
-        ann_fmin, ann_fmax = period_to_freq_bounds(ann_min, ann_max)
-        dec_fmin, dec_fmax = period_to_freq_bounds(dec_min, dec_max)
-
-        band_factors = {
-            "annual": (ann_fmin, ann_fmax, ann_factor),
-            "decadal": (dec_fmin, dec_fmax, dec_factor)
-        }
-        return band_factors
-
-    def generate_gaussian_resid_series(
+    def __init__(
         self,
-        g_resid: xr.DataArray,
-        freqs_obs: np.ndarray,
-        psd_obs: np.ndarray,
-        N_syn: int = 100,
+        nperseg: int = 60,
         dt_years: float = 1 / 12,
-        band_factors: list[tuple[float,float,float]] | None = None,
-        rng=None,
-        ) -> xr.DataArray:
+        remove_trend: bool = True,
+        remove_seasonal: bool = True,
+    ) -> None:
+        self.nperseg = nperseg
+        self.dt_years = dt_years
+        self.remove_trend = remove_trend
+        self.remove_seasonal = remove_seasonal
+
+        # Component objects — instantiated at fit() time
+        self.preprocessor: Preprocessor | None = None
+        self.gaussian_transform: GaussianTransform | None = None
+        self.spectral_synthesizer: SpectralSynthesizer | None = None
+
+        # Fitted scalars
+        self.smb_mean: float | None = None
+        self.smb_start_year: int | None = None
+        self.n_obs: int | None = None
+        self.is_fitted: bool = False
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _check_fitted(self) -> None:
+        if not self.is_fitted:
+            raise RuntimeError(
+                "SMBGenerator is not fitted. Call fit() or from_path() first."
+            )
+
+    def _make_synthetic_time(self, n_months: int) -> xr.CFTimeIndex:
         """
-        Generate one synthetic Gaussianized residual series of length N_syn.
-        Returns xr.DataArray with dim 'time_syn'.
+        Build a monthly cftime coordinate of length n_months, starting
+        from the first year of the observed record.
         """
-        if rng is None:
-            rng = np.random.default_rng()
-        freqs_syn = synthetic_freq_grid(N_syn, dt_years=dt_years)
-        psd_syn = interpolate_psd_to_grid(freqs_obs, psd_obs, freqs_syn)
-
-        if band_factors is not None:
-            # print("Applying band factors to PSD...")
-            # print(f"Band factors: {band_factors}")
-            psd_syn = scale_psd_bands(freqs_syn, psd_syn, band_factors)
-
-        g_syn = simulate_gaussian_from_psd(freqs_syn, psd_syn, N_syn, dt_years=dt_years, rng=rng)
-
-        # build synthetic time coordinate
-        t0 = g_resid["time"].values[0]
-        # treat as annual spacing
-        time_syn = xr.cftime_range(start=str(pd.to_datetime(t0).year), periods=N_syn, freq="MS")
-        g_syn_da = xr.DataArray(g_syn, coords={"time_syn": time_syn}, dims=("time_syn",), name="g_resid_syn")
-        return g_syn_da
-    
-    def generate(self, N_years: int = 100, rng = None, band_factors: list[tuple[float,float,float]] | None = None) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
-        """
-        Generate one synthetic SMB time series.
-        Returns xr.DataArray with dim 'time_syn'.
-        """
-        if self.resid is None:
-            raise ValueError("Residuals not available. Cannot generate synthetic series.")
-
-        # Estimate PSD of Gaussianized residuals
-        freqs_obs, psd_obs = estimate_psd(self.g_resid, method=self.psd_method)
-
-        dt_years = 1 / 12  # assuming monthly data; adjust if needed
-
-        N_syn = int(N_years * 1 / dt_years) # assuming monthly data; adjust if needed
-
-        g_syn_da = self.generate_gaussian_resid_series(
-            self.g_resid,
-            freqs_obs,
-            psd_obs,
-            N_syn=N_syn,
-            dt_years=dt_years,
-            rng=rng,
-            band_factors=band_factors
+        return xr.cftime_range(
+            start=f"{self.smb_start_year}-01-01",
+            periods=n_months,
+            freq="MS",
         )
 
-        self.g_syn = g_syn_da
-        # # Inverse Gaussianization
-        resid_syn = inverse_gaussianize_to_resid(g_syn_da.values, self.inv_cdf)
-        resid_syn_da = xr.DataArray(resid_syn, coords=g_syn_da.coords, dims=g_syn_da.dims, name="resid_syn")
+    # ------------------------------------------------------------------
+    # Convenience properties
+    # ------------------------------------------------------------------
 
-        # # Reconstruct SMB
-        smb_syn_values = reassemble_smb(resid_syn, self.smb_mean, None)
-        smb_syn_da = xr.DataArray(smb_syn_values, coords=g_syn_da.coords, dims=g_syn_da.dims, name="smb_syn")
-        # smb_syn_values = resid_syn_da.values + trend_syn
-        # smb_syn_da = xr.DataArray(smb_syn_values, coords=g_syn_da.coords, dims=g_syn_da.dims, name="smb_syn")
+    @property
+    def freqs(self) -> np.ndarray | None:
+        """Frequency grid from SpectralSynthesizer (cycles/year)."""
+        return self.spectral_synthesizer.freqs if self.is_fitted else None
 
-        return smb_syn_da, resid_syn_da, g_syn_da
+    @property
+    def psd(self) -> np.ndarray | None:
+        """Fitted PSD from SpectralSynthesizer."""
+        return self.spectral_synthesizer.psd if self.is_fitted else None
 
-    ### Checks ###
+    @property
+    def psd_ci_lower(self) -> np.ndarray | None:
+        return self.spectral_synthesizer.psd_ci_lower if self.is_fitted else None
 
-    def check_gaussianization(self) -> None:
-        if self.gaussianize and self.resid is not None:
-            pre_gauss_corr = np.corrcoef(self.resid.values[:-1], self.resid.values[1:])[0,1]
-            post_gauss_corr = np.corrcoef(self.g_resid.values[:-1], self.g_resid.values[1:])[0,1] # type: ignore
-            print(f"Pre-Gaussianization autocorrelation: {pre_gauss_corr}")
-            print(f"Post-Gaussianization autocorrelation: {post_gauss_corr}")
-        else:
-            print("Gaussianization not performed or residuals not available.")        
+    @property
+    def psd_ci_upper(self) -> np.ndarray | None:
+        return self.spectral_synthesizer.psd_ci_upper if self.is_fitted else None
 
-    ### Printing functions ###
-    def print_smb_info(self) -> None:
-        print(f"SMB DataArray info:")
-        print(self.smb)
-        if self.resid is not None:
-            print(f"Detrended Residuals info:")
-            print(self.resid)
-        if self.g_resid is not None:
-            print(f"Gaussianized Residuals info:")
-            print(self.g_resid)
-    
-    def print_psd_info(self) -> None:
-        if self.resid is None:
-            print("Residuals not available. Cannot compute PSD info.")
+    @property
+    def seasonal_cycle(self) -> xr.DataArray | None:
+        """Monthly climatology from Preprocessor."""
+        return self.preprocessor.seasonal_cycle if self.is_fitted else None
+
+    # ------------------------------------------------------------------
+    # Fitting
+    # ------------------------------------------------------------------
+
+    def fit(self, smb: xr.DataArray) -> SMBGenerator:
+        """
+        Fit the full pipeline to an observed SMB time series.
+
+        Steps (in order):
+          1. Store observed mean — the only place it lives
+          2. Preprocessor.fit_transform() — remove trend + seasonal cycle
+          3. GaussianTransform.fit() — learn empirical distribution
+          4. GaussianTransform.transform() — map residuals to N(0,1)
+          5. SpectralSynthesizer.fit() — estimate PSD + confidence intervals
+
+        Parameters
+        ----------
+        smb : xr.DataArray
+            Observed monthly SMB with a 'time' coordinate. Units should be
+            m w.e. a⁻¹ (SMBDataLoader handles unit conversion).
+
+        Returns
+        -------
+        self : SMBGenerator
+        """
+        if 'time' not in smb.coords:
+            raise ValueError("smb must have a 'time' coordinate.")
+
+        self.n_obs = smb.sizes['time']
+
+        # Step 1: store the observed mean — added back in generate(), once only
+        self.smb_mean = float(smb.mean())
+        self.smb_start_year = int(str(smb['time'].values[0])[:4])
+
+        # Step 2: preprocessing — removes trend and seasonal cycle
+        self.preprocessor = Preprocessor(
+            remove_trend=self.remove_trend,
+            remove_seasonal=self.remove_seasonal,
+        )
+        residuals = self.preprocessor.fit_transform(smb)
+
+        # Step 3 + 4: Gaussianize residuals
+        self.gaussian_transform = GaussianTransform()
+        self.gaussian_transform.fit(residuals)
+        g_resid = self.gaussian_transform.transform(residuals)
+
+        # Step 5: fit spectral model to Gaussianized residuals
+        g_vals = g_resid.values if isinstance(g_resid, xr.DataArray) else g_resid
+        self.spectral_synthesizer = SpectralSynthesizer(
+            nperseg=self.nperseg,
+            dt_years=self.dt_years,
+        )
+        self.spectral_synthesizer.fit(g_vals)
+
+        # Store residuals for use in validate() — lightweight for 1D scalar
+        self._residuals = residuals
+
+        self.is_fitted = True
+        return self
+
+    @classmethod
+    def from_path(
+        cls,
+        path: str,
+        var: str = "smbgl",
+        **kwargs,
+    ) -> SMBGenerator:
+        """
+        Convenience: load data from a NetCDF file and fit in one call.
+
+        Parameters
+        ----------
+        path : str
+            Path to RACMO NetCDF file.
+        var : str
+            SMB variable name. Default 'smbgl'.
+        **kwargs
+            Passed to SMBGenerator.__init__() (nperseg, dt_years, etc.).
+
+        Returns
+        -------
+        gen : SMBGenerator
+            Fitted generator ready for generate().
+        """
+        smb = SMBDataLoader(path, var=var).load()
+        gen = cls(**kwargs)
+        gen.fit(smb)
+        return gen
+
+    # ------------------------------------------------------------------
+    # Generation
+    # ------------------------------------------------------------------
+
+    def generate(self, experiment: Experiment) -> xr.Dataset:
+        """
+        Generate a synthetic SMB ensemble for a given Experiment.
+
+        Runs the inverse pipeline for all ensemble members:
+          1. SpectralSynthesizer.synthesize() — phase-randomised Gaussian ensemble
+          2. GaussianTransform.inverse_transform() — back to zero-mean residuals
+          3. Add smb_mean — observed mean restored once, here, only here
+          4. Preprocessor.inverse_transform() — seasonal cycle restored
+
+        Parameters
+        ----------
+        experiment : Experiment
+            Configuration object defining n_years, n_members, seed, and
+            optional band_scales.
+
+        Returns
+        -------
+        ds : xr.Dataset
+            Dataset with dimensions (member, time) and variables:
+              smb_syn   — full reconstructed SMB in m w.e. a⁻¹
+              resid_syn — zero-mean stochastic residuals before mean + seasonal
+              g_syn     — Gaussianized residuals (unit variance, for spectral QC)
+        """
+        self._check_fitted()
+
+        N_syn = experiment.n_months
+        syn_time = self._make_synthetic_time(N_syn)
+
+        # --- Phase-randomise in Gaussian space for all members at once ---
+        ensemble_g = self.spectral_synthesizer.synthesize(
+            n_years=experiment.n_years,
+            n_members=experiment.n_members,
+            band_scales=experiment.band_scales,
+            rng=experiment.rng,
+        )
+        # ensemble_g shape: (n_members, N_syn)
+
+        smb_list   = []
+        resid_list = []
+        g_list     = []
+
+        for i in range(experiment.n_members):
+            g_da = xr.DataArray(
+                ensemble_g[i],
+                coords={"time": syn_time},
+                dims=["time"],
+            )
+
+            # Gaussian → zero-mean stochastic residual
+            resid = self.gaussian_transform.inverse_transform(g_da)
+
+            # Add observed mean back — once, here, only here
+            smb_with_mean = resid + self.smb_mean
+
+            # Restore seasonal cycle (trend deliberately excluded for
+            # synthetic series — see Preprocessor methodology notes)
+            smb_full = self.preprocessor.inverse_transform(
+                smb_with_mean, add_trend=False
+            )
+
+            smb_list.append(smb_full.expand_dims(member=[i]))
+            resid_list.append(resid.expand_dims(member=[i]))
+            g_list.append(g_da.expand_dims(member=[i]))
+
+        ds = xr.Dataset(
+            {
+                "smb_syn":   xr.concat(smb_list,   dim="member"),
+                "resid_syn": xr.concat(resid_list, dim="member"),
+                "g_syn":     xr.concat(g_list,     dim="member"),
+            }
+        )
+
+        # Store experiment metadata as Dataset attributes
+        ds.attrs.update({
+            "experiment_name":        experiment.name,
+            "experiment_description": experiment.description,
+            "n_years":                experiment.n_years,
+            "n_members":              experiment.n_members,
+            "seed":                   experiment.seed,
+            "band_scales":            str(experiment.band_scales),
+            "smb_mean":               self.smb_mean,
+            "smb_start_year":         self.smb_start_year,
+        })
+
+        return ds
+
+    def generate_suite(
+        self,
+        suite: list[Experiment],
+    ) -> dict[str, xr.Dataset]:
+        """
+        Run a list of Experiments, returning one Dataset per experiment.
+
+        Parameters
+        ----------
+        suite : list of Experiment
+            Typically from Experiment.standard_suite().
+
+        Returns
+        -------
+        results : dict[str, xr.Dataset]
+            Keys are experiment names; values are the ensemble Datasets.
+        """
+        self._check_fitted()
+        return {exp.name: self.generate(exp) for exp in suite}
+
+    # ------------------------------------------------------------------
+    # Validation
+    # ------------------------------------------------------------------
+
+    def validate(self, verbose: bool = True) -> dict:
+        """
+        Run component validation checks on the fitted pipeline.
+
+        Checks:
+          1. GaussianTransform — round-trip fidelity and normality
+          2. SpectralSynthesizer — PSD fidelity against confidence intervals
+          3. Stationarity — ADF test on preprocessed residuals
+
+        Parameters
+        ----------
+        verbose : bool
+            If True, print formatted results.
+
+        Returns
+        -------
+        results : dict
+            Keys: 'gaussian_transform', 'spectral_synthesizer',
+                  'stationarity', 'passed'.
+        """
+        self._check_fitted()
+
+        if verbose:
+            print("SMBGenerator validation")
+            print("=" * 40)
+
+        # --- 1. GaussianTransform ---
+        if verbose:
+            print("\n[1] GaussianTransform:")
+        gt_results = self.gaussian_transform.validate(
+            self._residuals, verbose=verbose
+        )
+
+        # --- 2. SpectralSynthesizer ---
+        if verbose:
+            print("\n[2] SpectralSynthesizer:")
+        ss_results = self.spectral_synthesizer.validate(
+            n_check=100, verbose=verbose
+        )
+
+        # --- 3. Stationarity of preprocessed residuals ---
+        if verbose:
+            print("\n[3] Stationarity (ADF test on preprocessed residuals):")
+        stat_results = self.preprocessor.check_stationarity(
+            self._residuals, verbose=verbose
+        )
+
+        overall_passed = (
+            gt_results["passed"]
+            and ss_results["passed"]
+            and stat_results["is_stationary"]
+        )
+
+        results = {
+            "gaussian_transform":   gt_results,
+            "spectral_synthesizer": ss_results,
+            "stationarity":         stat_results,
+            "passed":               overall_passed,
+        }
+
+        if verbose:
+            print(f"\nOverall: {'PASSED ✓' if overall_passed else 'FAILED ✗'}")
+
+        return results
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def save(
+        self,
+        dataset: xr.Dataset,
+        filepath: str,
+        experiment: Experiment | None = None,
+    ) -> None:
+        """
+        Save an ensemble Dataset to a NetCDF file.
+
+        Experiment metadata is stored as global attributes so the file
+        is self-describing. If experiment is None, only the data is saved.
+
+        Parameters
+        ----------
+        dataset : xr.Dataset
+            Output of generate().
+        filepath : str
+            Output path. Should end in .nc.
+        experiment : Experiment or None
+            If provided, metadata is written as global attributes.
+        """
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if experiment is not None:
+            attrs = experiment.to_dict()
+            # NetCDF attributes do not support multi-dimensional arrays,
+            # lists of tuples, or None. Convert band_scales to a string
+            # representation in all cases. str(None) → "None", which is
+            # readable and recoverable via ast.literal_eval() if needed.
+            attrs["band_scales"] = str(attrs["band_scales"])
+            dataset.attrs.update(attrs)
+
+        dataset.to_netcdf(path)
+        print(f"Saved: {path}")
+
+    # ------------------------------------------------------------------
+    # Display
+    # ------------------------------------------------------------------
+
+    def summarize(self) -> None:
+        """Print a structured summary of the fitted pipeline."""
+        if not self.is_fitted:
+            print("SMBGenerator not fitted.")
             return
-        freqs, psd = estimate_psd(self.resid, method=self.psd_method)
-        print(f"Estimated PSD using method '{self.psd_method}':")
-        for f, p in zip(freqs, psd):
-            print(f"Freq: {f:.4f}, PSD: {p:.4f}")
-    
-    def print_band_factors(self) -> None:
-        print("Band factors:")
-        for band_name, (fmin, fmax, factor) in self.bands.items():
-            print(f"{band_name}: pmin={1/fmax:.2f}, fmin={fmin:.4f}, pmax={1/fmin:.2f}, fmax={fmax:.4f}, factor={factor}")
-    
-    def print_moments(self, syn_smb = None) -> None:
-        obs_smb = self.smb_detrended if self.detrend else self.smb
-        obs_moments = calc_moments(obs_smb)
 
-        print("Observed Detrended SMB moments:")
+        print("SMBGenerator summary")
+        print(f"  n_obs:         {self.n_obs}")
+        print(f"  smb_mean:      {self.smb_mean:.5f}  m w.e. a⁻¹")
+        print(f"  start_year:    {self.smb_start_year}")
+        print(f"  nperseg:       {self.nperseg}")
+        print(f"  remove_trend:  {self.remove_trend}")
+        print(f"  remove_seasonal: {self.remove_seasonal}")
 
-        for name, value in obs_moments.items():
-            print(f"{name}: {value:.4f}")
-        if syn_smb is not None:
-            syn_moments = calc_moments(syn_smb)
-            print("\nSynthetic SMB moments:")
-            for name, value in syn_moments.items():
-                print(f"{name}: {value:.4f}")
+        if self.preprocessor and self.preprocessor.is_fitted:
+            print("\n  Preprocessor:")
+            self.preprocessor.summarize()
 
+        if self.spectral_synthesizer and self.spectral_synthesizer.is_fitted:
+            ss = self.spectral_synthesizer
+            print(f"\n  SpectralSynthesizer:")
+            print(f"    n_segments:  {ss.n_segments}")
+            print(f"    CI width:    {(ss.psd_ci_upper[1:] / ss.psd_ci_lower[1:]).mean():.2f}x")
+            annual_idx = int(np.argmin(np.abs(ss.freqs - 1.0)))
+            decadal_idx = int(np.argmin(np.abs(ss.freqs - 0.1)))
+            print(f"    PSD at f=1.0 (annual):  {ss.psd[annual_idx]:.4e}")
+            print(f"    PSD at f=0.1 (decadal): {ss.psd[decadal_idx]:.4e}")
 
-    ### Plotting functions ###
-
-    def plot_smb(self, detrended = False) -> None:
-        if detrended and self.resid is not None:
-            plot_detrended_smb(self.smb, self.resid, self.trend) # type: ignore
-        else:
-            plot_smb_time_series(self.smb, self.trend) # type: ignore
-    
-    def plot_psd(self, save = False) -> None:
-        from scipy import signal
-        import numpy as np
-
-        x1 = self.smb.values
-        x2 = self.resid.values
-        x3 = self.g_resid.values
-        
-
-
-        # PSD
-        fs = 1.0 / (1 / 12)
-        freqs1, psd1 = signal.welch(x1, fs=fs, nperseg=min(60, len(x1)))
-        # freqs2, psd2 = signal.welch(x2, fs=fs, nperseg=min(60, len(x2)))
-
-        fig, ax = plt.subplots(figsize=(10,6))
-
-        ax.loglog(freqs1, psd1, color='tab:blue')
-        # ax.loglog(freqs2, psd2, color='tab:orange', label='Detrended Residuals')
-
-        # Define bands (cycles per year)
-        annual_band = (0.8, 1.2)          # ~1 year period
-        decadal_band = (1/15, 1/8)        # ~8-30 year periods
-
-        # # Shade bands
-        ymin, ymax = ax.get_ylim()
-        ax.fill_betweenx([ymin, ymax], annual_band[0], annual_band[1], color='orange', alpha=0.18, label='Annual band')
-        ax.fill_betweenx([ymin, ymax], decadal_band[0], decadal_band[1], color='green', alpha=0.12, label='Decadal band')
-
-        # # Marker lines for center frequencies
-        ax.axvline(1.0, color='orange', linestyle='--', linewidth=1)
-        ax.axvline(1/10, color='green', linestyle='--', linewidth=1)
-
-        ax.set_xlabel("Frequency (cycles/yr)")
-        ax.set_ylabel("PSD")
-        ax.set_title("Power Spectral Density of RACMO SMB")
-        plt.legend(loc='best')
-        if save:
-            plt.savefig("./figures/smb_obs_psd.png", dpi=300)
-        plt.show()
-
-
-
-    def plot_gaussianization_check(self) -> None:
-        self.check_gaussianization()
-        if self.gaussianize and self.resid is not None:
-            plot_gaussianization_check(self.resid, self.g_resid) # type: ignore
-        else:
-            print("Gaussianization not performed or residuals not available.")
-    
-    def plot_acf(self, gaussian = True) -> None:
-        if gaussian and self.g_resid is not None:
-            plot_acf(self.resid, self.g_resid, title="ACF of Gaussianized Residuals") # type: ignore
-        else:
-            print("Requested data not available for ACF plot.")
-
-    def plot_psd_acf(self, plot_gaussian=True) -> None:
-        if self.resid is not None and self.g_resid is not None:
-            plot_psd_acf(self.resid, self.g_resid, method=self.psd_method, plot_gaussian=plot_gaussian) # type: ignore
-        else:
-            print("Residuals not available for PSD and ACF plot.")
-
-    def compare_synthetic_psd(self, g_syn: xr.DataArray, dt: float = 1.0/12) -> None:
-        if self.g_resid is None:
-            print("Gaussianized residuals not available for PSD comparison.")
-            return
-        freqs_obs, psd_obs = estimate_psd(self.smb, method=self.psd_method, dt_years=dt)
-        freqs_syn, psd_syn = estimate_psd(g_syn, method=self.psd_method, dt_years=dt)
-        fig, ax = plt.subplots(figsize=(8,5))
-        ax.loglog(freqs_obs, psd_obs, label="Observed Gaussianized Residuals PSD")
-        ax.loglog(freqs_syn, psd_syn, label="Synthetic Gaussianized Residuals PSD")
-        ax.set_xlabel("Frequency (1/years)")
-        ax.set_ylabel("PSD")
-        ax.set_title("PSD Comparison")
-        ax.legend()
-        plt.show()
-
-    def compare_smb_obs_syn(self, smb_syn: xr.DataArray) -> None:
-        plot_smb_obs_syn(self.smb, smb_syn)
-    
-    def compare_gaussian_obs_syn(self, g_syn: xr.DataArray) -> None:
-        plot_psd_comparison_gaussian(self.g_resid, g_syn, dt=1/12, method=self.psd_method) # type: ignore
-
-    
-
-        
+    def __repr__(self) -> str:
+        if self.is_fitted:
+            return (
+                f"SMBGenerator(fitted=True, n_obs={self.n_obs}, "
+                f"smb_mean={self.smb_mean:.4f}, "
+                f"start_year={self.smb_start_year})"
+            )
+        return "SMBGenerator(fitted=False)"
