@@ -5,7 +5,7 @@ description = "Stochastic time series ensemble generation"
 authors = ["Cameron Markovsky <cameron.markovsky@utah.edu>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "syn-smb", from = "src"}]  # required for src layout
+packages = [{include = "syn_smb", from = "src"}]  # required for src layout
 
 [tool.poetry.dependencies]
 python = "^3.10"
