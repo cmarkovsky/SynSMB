@@ -20,6 +20,10 @@ from syn_smb.core import (
     Experiment,
     SMBGenerator,
     Validator,
+    multi_basin_run,
+    plot_multibasin_psd,
+    multibasin_metrics_table,
+    RACMOCatalog,
 )
  
 __all__ = [
@@ -30,4 +34,8 @@ __all__ = [
     "Experiment",
     "SMBGenerator",
     "Validator",
+    "multi_basin_run",
+    "plot_multibasin_psd",
+    "multibasin_metrics_table",
+    "RACMOCatalog",
 ]

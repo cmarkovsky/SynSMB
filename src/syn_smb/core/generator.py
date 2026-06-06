@@ -28,11 +28,11 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from syn_smb.core.preprocessor import Preprocessor
-from syn_smb.core.gaussianize import GaussianTransform
-from syn_smb.core.spectral import SpectralSynthesizer
-from syn_smb.core.experiment import Experiment
-from syn_smb.core.data_loader import SMBDataLoader
+from .preprocessor import Preprocessor
+from .gaussianize import GaussianTransform
+from .spectral import SpectralSynthesizer
+from .experiment import Experiment
+from .data_loader import SMBDataLoader
 
 
 class SMBGenerator:

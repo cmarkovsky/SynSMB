@@ -29,8 +29,8 @@ from scipy import stats
 from scipy.signal import welch
 from statsmodels.tsa.stattools import acf as compute_acf
 
-from syn_smb.core.generator import SMBGenerator
-from syn_smb.core.experiment import Experiment
+from .generator import SMBGenerator
+from .experiment import Experiment
 
 
 class Validator:
@@ -696,6 +696,238 @@ class Validator:
         ax.set_ylabel("Annual-mean SMB anomaly (m w.e. a⁻¹)")
         ax.legend(fontsize=9)
         ax.grid(True, which="both", alpha=0.3)
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches="tight")
+            print(f"Saved: {save_path}")
+        plt.show()
+
+    # ------------------------------------------------------------------
+    # 8. plot_convergence
+    # ------------------------------------------------------------------
+
+    def plot_convergence(
+        self,
+        results: dict,
+        save_path: str | None = None,
+    ) -> None:
+        """
+        Show how validation metrics stabilise with increasing ensemble size.
+
+        Parameters
+        ----------
+        results : dict
+            Output of convergence_test().
+        save_path : str or None
+        """
+        counts = results["member_counts"]
+        metrics = {
+            "Variance ratio":   (results["variance_ratio"],  1.0,   (0.85, 1.15)),
+            "PSD RMS error":    (results["psd_rms_error"],   None,  None),
+            "KS statistic":     (results["ks_statistic"],    None,  None),
+            "Mean ratio":       (results["mean_ratio"],      1.0,   (0.95, 1.05)),
+        }
+
+        fig, axes = plt.subplots(1, 4, figsize=(14, 4))
+        fig.suptitle("Ensemble convergence — metric stability vs ensemble size",
+                     fontsize=11)
+
+        for ax, (label, (values, target, band)) in zip(axes, metrics.items()):
+            ax.plot(counts, values, "o-", color="tab:blue", lw=1.5, markersize=5)
+            if target is not None:
+                ax.axhline(target, color="gray", linestyle="--", lw=1,
+                           label=f"Target = {target}")
+            if band is not None:
+                ax.axhspan(band[0], band[1], alpha=0.08, color="gray")
+            ax.set_xlabel("Ensemble size (N)")
+            ax.set_title(label)
+            ax.set_xticks(counts)
+            ax.tick_params(axis="x", labelsize=8)
+            if target is not None:
+                ax.legend(fontsize=8)
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches="tight")
+            print(f"Saved: {save_path}")
+        plt.show()
+
+    # ------------------------------------------------------------------
+    # 9. plot_calibration_split
+    # ------------------------------------------------------------------
+
+    def plot_calibration_split(
+        self,
+        results: dict,
+        save_path: str | None = None,
+    ) -> None:
+        """
+        Visual comparison of calibration split test metrics.
+
+        Shows each metric as two markers (first_half, second_half) with
+        target reference lines. Mean ratio is shown separately since its
+        expected deviation from 1.0 is due to the trend, not a failure.
+
+        Parameters
+        ----------
+        results : dict
+            Output of calibration_split_test().
+        save_path : str or None
+        """
+        # Metrics to show in the main panel (exclude mean_ratio — shown separately)
+        main_metrics = [
+            ("variance_ratio",  "Variance ratio",    1.0),
+            ("psd_rms_error",   "PSD RMS error",     None),
+            ("acf_lag1_error",  "ACF lag-1 error",   0.05),
+            ("acf_lag12_error", "ACF lag-12 error",  0.05),
+            ("seasonal_rmse",   "Seasonal RMSE",     None),
+        ]
+
+        first  = results["first_half"]
+        second = results["second_half"]
+
+        fig, axes = plt.subplots(1, 2, figsize=(13, 5),
+                                 gridspec_kw={"width_ratios": [3, 1]})
+        fig.suptitle("Calibration split test", fontsize=11)
+
+        # ── left: main metrics ──
+        ax = axes[0]
+        x   = np.arange(len(main_metrics))
+        w   = 0.3
+        labels = [m[1] for m in main_metrics]
+        v1 = [first[m[0]]  for m in main_metrics]
+        v2 = [second[m[0]] for m in main_metrics]
+
+        bars1 = ax.bar(x - w/2, v1, w, color="tab:blue",  alpha=0.75,
+                       label="Train on first half (1979–~2001)")
+        bars2 = ax.bar(x + w/2, v2, w, color="tab:orange", alpha=0.75,
+                       label="Train on second half (~2001–2023)")
+
+        for i, (_, _, target) in enumerate(main_metrics):
+            if target is not None:
+                ax.plot([i - w, i + w], [target, target],
+                        color="black", lw=1.2, linestyle="--", zorder=5)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=20, ha="right", fontsize=9)
+        ax.set_ylabel("Metric value")
+        ax.set_title("Spectral and distributional metrics\n"
+                     "(dashed lines = targets)")
+        ax.legend(fontsize=9)
+
+        # ── right: mean ratio (expected to deviate due to trend) ──
+        ax = axes[1]
+        ax.bar([0], [first["mean_ratio"]],  0.4, color="tab:blue",  alpha=0.75,
+               label="First half")
+        ax.bar([0.5], [second["mean_ratio"]], 0.4, color="tab:orange", alpha=0.75,
+               label="Second half")
+        ax.axhline(1.0, color="black", linestyle="--", lw=1.2, label="1.0")
+        ax.set_xticks([0, 0.5])
+        ax.set_xticklabels(["First", "Second"], fontsize=9)
+        ax.set_title("Mean ratio\n(deviation expected\nfrom trend)")
+        ax.legend(fontsize=8)
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches="tight")
+            print(f"Saved: {save_path}")
+        plt.show()
+
+    # ------------------------------------------------------------------
+    # 10. plot_band_comparison
+    # ------------------------------------------------------------------
+
+    def plot_band_comparison(
+        self,
+        datasets: dict,
+        save_path: str | None = None,
+    ) -> None:
+        """
+        Overlay PSD for all experiments in the standard suite.
+
+        Promoted from the Experiment real data test to a paper-quality
+        figure suitable for the methods section.
+
+        Parameters
+        ----------
+        datasets : dict
+            Output of SMBGenerator.generate_suite() — {experiment_name: xr.Dataset}.
+        save_path : str or None
+        """
+        # Colorblind-safe palette (Wong 2011)
+        COLORS = {
+            "baseline":               "#000000",
+            "annual_enhanced_10.0x":  "#E69F00",
+            "annual_suppressed_0.1x": "#56B4E9",
+            "decadal_enhanced_10.0x": "#D55E00",
+            "decadal_suppressed_0.1x":"#009E73",
+        }
+
+        gen = self.generator
+        ss  = gen.spectral_synthesizer
+
+        fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+        fig.suptitle("Experiment band comparison", fontsize=11)
+
+        # ── left: full PSD (log-log) ──
+        ax = axes[0]
+        ax.loglog(ss.freqs[1:], ss.psd[1:],
+                  color="tab:blue", lw=2, linestyle="--",
+                  label="Observed (fitted PSD)", zorder=5)
+        ax.fill_between(ss.freqs[1:],
+                        ss.psd_ci_lower[1:], ss.psd_ci_upper[1:],
+                        color="tab:blue", alpha=0.1, label="95% CI")
+
+        for name, ds in datasets.items():
+            color = COLORS.get(name, "gray")
+            member_psds = []
+            for i in range(ds.sizes["member"]):
+                _, p = welch(ds["g_syn"].isel(member=i).values,
+                             fs=ss.fs, nperseg=gen.nperseg)
+                member_psds.append(p)
+            mean_psd = np.array(member_psds).mean(axis=0)
+            lw   = 2.0 if name == "baseline" else 1.2
+            ax.loglog(ss.freqs[1:], mean_psd[1:],
+                      color=color, lw=lw, alpha=0.9, label=name)
+
+        ax.axvline(1.0, color="gray", linestyle=":", lw=1, alpha=0.5)
+        ax.axvline(0.1, color="gray", linestyle=":", lw=1, alpha=0.5)
+        ax.set_xlabel("Frequency (cycles yr⁻¹)")
+        ax.set_ylabel("PSD (Gaussianized space)")
+        ax.set_title("Ensemble-mean PSD by experiment")
+        ax.legend(fontsize=8, loc="lower left")
+
+        # ── right: ratio to baseline ──
+        ax = axes[1]
+        baseline_psd = None
+        ratios = {}
+        for name, ds in datasets.items():
+            member_psds = []
+            for i in range(ds.sizes["member"]):
+                _, p = welch(ds["g_syn"].isel(member=i).values,
+                             fs=ss.fs, nperseg=gen.nperseg)
+                member_psds.append(p)
+            mean_psd = np.array(member_psds).mean(axis=0)
+            if name == "baseline":
+                baseline_psd = mean_psd
+            else:
+                ratios[name] = mean_psd
+
+        if baseline_psd is not None:
+            for name, psd in ratios.items():
+                color = COLORS.get(name, "gray")
+                ratio = psd[1:] / baseline_psd[1:]
+                ax.semilogx(ss.freqs[1:], ratio,
+                            color=color, lw=1.5, label=name)
+            ax.axhline(1.0, color="black", linestyle="--", lw=1, alpha=0.5)
+            ax.axvline(1.0, color="gray", linestyle=":", lw=1, alpha=0.5)
+            ax.axvline(0.1, color="gray", linestyle=":", lw=1, alpha=0.5)
+            ax.set_xlabel("Frequency (cycles yr⁻¹)")
+            ax.set_ylabel("PSD ratio (experiment / baseline)")
+            ax.set_title("PSD relative to baseline\n"
+                         "(vertical lines: annual, decadal)")
+            ax.legend(fontsize=8)
 
         plt.tight_layout()
         if save_path:

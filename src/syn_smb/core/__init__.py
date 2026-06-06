@@ -15,7 +15,13 @@ from syn_smb.core.spectral import SpectralSynthesizer
 from syn_smb.core.experiment import Experiment
 from syn_smb.core.generator import SMBGenerator
 from syn_smb.core.validator import Validator
- 
+from syn_smb.core.multi_basin import (
+    multi_basin_run,
+    plot_multibasin_psd,
+    multibasin_metrics_table,
+)
+from syn_smb.core.racmo_catalog import RACMOCatalog
+
 __all__ = [
     "SMBDataLoader",
     "Preprocessor",
@@ -24,4 +30,8 @@ __all__ = [
     "Experiment",
     "SMBGenerator",
     "Validator",
+    "multi_basin_run",
+    "plot_multibasin_psd",
+    "multibasin_metrics_table",
+    "RACMOCatalog",
 ]
