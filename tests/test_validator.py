@@ -13,9 +13,9 @@ Run via pytest for pass/fail:
 import numpy as np
 import xarray as xr
 import pytest
-from syn_smb.core.generator import SMBGenerator
-from syn_smb.core.experiment import Experiment
-from syn_smb.core.validator import Validator
+from syn_smb import SMBGenerator
+from syn_smb import Experiment
+from syn_smb import Validator
 
 
 # ======================================================================

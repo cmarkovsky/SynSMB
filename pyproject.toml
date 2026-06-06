@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "syn-smb"
-version = "0.4.0"
+version = "0.4.1"
 description = "Stochastic time series ensemble generation"
 authors = ["Cameron Markovsky <cameron.markovsky@utah.edu>"]
 license = "MIT"

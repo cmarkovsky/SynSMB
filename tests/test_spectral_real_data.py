@@ -16,9 +16,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import welch
 
-from syn_smb.core.data_loader import SMBDataLoader
-from syn_smb.core.gaussianize import GaussianTransform
-from syn_smb.core.spectral import SpectralSynthesizer
+from syn_smb import SMBDataLoader
+from syn_smb import GaussianTransform
+from syn_smb import SpectralSynthesizer
 
 
 # --- Edit this if running without a command-line argument ---

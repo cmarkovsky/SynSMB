@@ -14,7 +14,7 @@ import numpy as np
 import xarray as xr
 import pytest
 from scipy.signal import welch
-from syn_smb.core.spectral import SpectralSynthesizer
+from syn_smb import SpectralSynthesizer
 
 
 # ======================================================================

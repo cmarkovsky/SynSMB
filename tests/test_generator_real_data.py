@@ -19,8 +19,8 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from scipy.signal import welch
 
-from syn_smb.core.generator import SMBGenerator
-from syn_smb.core.experiment import Experiment
+from syn_smb import SMBGenerator
+from syn_smb import Experiment
 
 
 RACMO_PATH = "/path/to/your/racmo_file.nc"

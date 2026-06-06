@@ -13,7 +13,7 @@ Run via pytest for pass/fail:
 import numpy as np
 import xarray as xr
 import pytest
-from syn_smb.core.preprocessor import Preprocessor
+from syn_smb import Preprocessor
 
 
 # ======================================================================

@@ -15,8 +15,8 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 
-from syn_smb.core.data_loader import SMBDataLoader
-from syn_smb.core.gaussianize import GaussianTransform
+from syn_smb import SMBDataLoader
+from syn_smb import GaussianTransform
 
 
 # --- Edit this if you want to run without a command-line argument ---

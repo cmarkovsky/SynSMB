@@ -20,11 +20,11 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from scipy.signal import welch
 
-from syn_smb.core.data_loader import SMBDataLoader
-from syn_smb.core.preprocessor import Preprocessor
-from syn_smb.core.gaussianize import GaussianTransform
-from syn_smb.core.spectral import SpectralSynthesizer
-from syn_smb.core.experiment import Experiment
+from syn_smb import SMBDataLoader
+from syn_smb import Preprocessor
+from syn_smb import GaussianTransform
+from syn_smb import SpectralSynthesizer
+from syn_smb import Experiment
 
 
 RACMO_PATH = "/path/to/your/racmo_file.nc"
