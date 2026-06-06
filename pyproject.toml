@@ -32,6 +32,9 @@ sphinx = "^7.0"
 sphinx-book-theme = "*"
 nbsphinx = "*"
 
+[tool.pytest.ini_options]
+testpaths = "tests"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
