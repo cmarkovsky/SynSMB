@@ -24,6 +24,11 @@ from syn_smb.core import (
     plot_multibasin_psd,
     multibasin_metrics_table,
     RACMOCatalog,
+    BandAnalyser,
+    SMBFieldLoader,
+    SpatialPreprocessor,
+    EOFDecomposer,
+    SMBFieldGenerator,
 )
  
 __all__ = [
@@ -38,4 +43,9 @@ __all__ = [
     "plot_multibasin_psd",
     "multibasin_metrics_table",
     "RACMOCatalog",
+    "BandAnalyser",
+    "SMBFieldLoader",
+    "SpatialPreprocessor",
+    "EOFDecomposer",
+    "SMBFieldGenerator",
 ]

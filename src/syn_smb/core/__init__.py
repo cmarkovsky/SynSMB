@@ -23,6 +23,11 @@ from syn_smb.core.multi_basin import (
 from syn_smb.core.racmo_catalog import RACMOCatalog
 from syn_smb.core.band_analyzer import BandAnalyser
 
+#2D Imports
+from syn_smb.core.smb_field_loader import SMBFieldLoader
+from syn_smb.core.spatial_preprocessor import SpatialPreprocessor
+from syn_smb.core.eof_decomposer import EOFDecomposer
+from syn_smb.core.smb_field_generator import SMBFieldGenerator
 __all__ = [
     "SMBDataLoader",
     "Preprocessor",
@@ -36,4 +41,8 @@ __all__ = [
     "multibasin_metrics_table",
     "RACMOCatalog",
     "BandAnalyser",
+    "SMBFieldLoader",
+    "SpatialPreprocessor",
+    "EOFDecomposer",
+    "SMBFieldGenerator",
 ]
