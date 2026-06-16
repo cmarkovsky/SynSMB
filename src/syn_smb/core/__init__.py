@@ -21,6 +21,7 @@ from syn_smb.core.multi_basin import (
     multibasin_metrics_table,
 )
 from syn_smb.core.racmo_catalog import RACMOCatalog
+from syn_smb.core.band_analyzer import BandAnalyser
 
 __all__ = [
     "SMBDataLoader",
@@ -34,4 +35,5 @@ __all__ = [
     "plot_multibasin_psd",
     "multibasin_metrics_table",
     "RACMOCatalog",
+    "BandAnalyser",
 ]

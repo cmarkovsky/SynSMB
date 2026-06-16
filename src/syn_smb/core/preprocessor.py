@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import numpy as np
 import xarray as xr
-
+import matplotlib.pyplot as plt
 
 class Preprocessor:
     """
@@ -394,3 +394,86 @@ class Preprocessor:
             f"remove_trend={self.remove_trend}, "
             f"remove_seasonal={self.remove_seasonal})"
         )
+    
+
+    def plot_decomposition(self, smb, save_path=None):
+        """
+        Four-panel figure showing the effect of each preprocessing step.
+        Only requires the raw SMB DataArray — all components are derived
+        from self after fit() has been called.
+
+        Panels
+        ------
+        Top-left  : Raw SMB time series with fitted trend overlaid
+        Top-right : PSD comparison — raw vs detrended vs fully preprocessed
+                    (shows the ~30x annual-band reduction from seasonal removal)
+        Bottom-left : Monthly climatology bar chart (seasonal cycle removed)
+        Bottom-right: Final stochastic residuals passed to GaussianTransform
+        """
+        if not self.is_fitted:
+            raise RuntimeError("Call fit() before plot_decomposition().")
+
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from scipy.signal import welch
+
+        # ── Derive all components from self + smb ──
+        trend      = self._evaluate_trend(smb)
+        detrended  = smb - trend
+        residuals  = self.transform(smb)          # removes trend + seasonal
+        months     = np.arange(1, 13)
+        fs         = 12.0                         # cycles per year
+
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        fig.suptitle("Preprocessor decomposition", fontsize=12)
+
+        # ── Top-left: raw SMB + trend ──
+        ax = axes[0, 0]
+        ax.plot(smb.time, smb.values,   color="tab:blue",   lw=0.8,
+                label="Raw SMB", alpha=0.8)
+        ax.plot(smb.time, trend.values, color="tab:red",    lw=1.5,
+                linestyle="--", label="Linear trend")
+        ax.set_ylabel(f"SMB ({smb.attrs.get('units', 'm w.e.')})")
+        ax.set_title("Raw SMB with trend")
+        ax.legend(fontsize=8)
+
+        # ── Top-right: PSD comparison ──
+        ax = axes[0, 1]
+        for series, label, color, lw in [
+            (smb.values,        "Raw",         "tab:gray",   0.8),
+            (detrended.values,  "Detrended",   "tab:orange", 1.2),
+            (residuals.values,  "Residuals\n(trend + seasonal removed)",
+                                            "tab:blue",   1.8),
+        ]:
+            f, p = welch(series, fs=fs, nperseg=min(60, len(series)))
+            ax.loglog(f[1:], p[1:], label=label, color=color, lw=lw)
+        ax.axvline(1.0, color="gray", lw=0.8, linestyle=":", alpha=0.6)
+        ax.set_xlabel("Frequency (cycles yr⁻¹)")
+        ax.set_ylabel("PSD")
+        ax.set_title("PSD at each preprocessing stage")
+        ax.legend(fontsize=8)
+
+        # ── Bottom-left: seasonal cycle bar chart ──
+        ax = axes[1, 0]
+        month_labels = ["Jan","Feb","Mar","Apr","May","Jun",
+                        "Jul","Aug","Sep","Oct","Nov","Dec"]
+        colors = ["tab:blue" if v >= 0 else "tab:red"
+                for v in self.seasonal_cycle.values]
+        ax.bar(months, self.seasonal_cycle.values, color=colors, alpha=0.8)
+        ax.axhline(0, color="black", lw=0.8)
+        ax.set_xticks(months)
+        ax.set_xticklabels(month_labels, fontsize=8)
+        ax.set_ylabel(f"SMB anomaly ({smb.attrs.get('units', 'm w.e.')})")
+        ax.set_title("Seasonal cycle (monthly climatology)")
+
+        # ── Bottom-right: final residuals ──
+        ax = axes[1, 1]
+        ax.plot(smb.time, residuals.values, color="tab:blue", lw=0.8, alpha=0.8)
+        ax.axhline(0, color="gray", lw=0.8, linestyle="--")
+        ax.set_ylabel(f"Residual ({smb.attrs.get('units', 'm w.e.')})")
+        ax.set_title("Stochastic residuals → GaussianTransform")
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.show()
