@@ -96,15 +96,24 @@ class SMBFieldLoader:
     # Public interface
     # ------------------------------------------------------------------
 
-    def load(self) -> xr.DataArray:
+    def load(self, crop: bool = True) -> xr.DataArray:
         """
         Load, mask, and return the basin SMB field.
 
+        Parameters
+        ----------
+        crop : bool
+            If True (default), crop the output to the bounding box of the
+            basin mask. Reduces memory dramatically — for PIG at 11km this
+            shrinks the grid from 591×726 (~430k cells) to ~30×40 (~1.2k
+            cells). The cropped field is still a spatial DataArray with the
+            same lat/lon structure; only the outer NaN border is removed.
+            Set False only if you need the full RACMO grid extent.
+
         Returns
         -------
-        field : xr.DataArray, shape (time, rlat, rlon)
+        field : xr.DataArray, shape (time, rlat_crop, rlon_crop)
             Monthly SMB in m w.e., NaN outside the basin.
-            Coordinate 'time' is preserved from the RACMO file.
         """
         if self._field is not None:
             return self._field
@@ -120,11 +129,19 @@ class SMBFieldLoader:
         self._basin_mask = mask
 
         field = smb.where(mask)
+
+        if crop:
+            field, mask, lat, lon = self._crop_to_basin(field, mask, lat, lon)
+            self._basin_mask = mask
+            self._lat        = lat
+            self._lon        = lon
+
         field.attrs.update({
-            "basin_name": self.basin_name,
-            "units":      smb.attrs.get("units", "m w.e."),
-            "long_name":  f"Basin SMB — {self.basin_name}",
+            "basin_name":    self.basin_name,
+            "units":         smb.attrs.get("units", "m w.e."),
+            "long_name":     f"Basin SMB — {self.basin_name}",
             "n_valid_cells": int(mask.sum()),
+            "cropped":       int(crop),
         })
         field.name = "smb"
 
@@ -135,6 +152,60 @@ class SMBFieldLoader:
             f"shape={tuple(field.dims)}: {dict(field.sizes)}"
         )
         return field
+
+    def _crop_to_basin(
+        self,
+        field: xr.DataArray,
+        mask:  xr.DataArray,
+        lat:   xr.DataArray,
+        lon:   xr.DataArray,
+        pad:   int = 2,
+    ) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray, xr.DataArray]:
+        """
+        Crop field, mask, lat, lon to the bounding box of valid cells.
+
+        Parameters
+        ----------
+        pad : int
+            Number of extra cells added around the bounding box on each
+            side. Keeps a small border of NaN for context in plots.
+        """
+        mask_np = mask.values
+        spatial_dims = [d for d in field.dims if d != "time"]
+
+        rows = np.any(mask_np, axis=1)
+        cols = np.any(mask_np, axis=0)
+
+        row_idx = np.where(rows)[0]
+        col_idx = np.where(cols)[0]
+
+        if len(row_idx) == 0 or len(col_idx) == 0:
+            return field, mask, lat, lon   # no valid cells — nothing to crop
+
+        r0 = max(0, int(row_idx[0])  - pad)
+        r1 = min(field.sizes[spatial_dims[0]] - 1, int(row_idx[-1]) + pad)
+        c0 = max(0, int(col_idx[0])  - pad)
+        c1 = min(field.sizes[spatial_dims[1]] - 1, int(col_idx[-1]) + pad)
+
+        slices = {
+            spatial_dims[0]: slice(r0, r1 + 1),
+            spatial_dims[1]: slice(c0, c1 + 1),
+        }
+
+        field_crop = field.isel(slices)
+        mask_crop  = mask.isel(slices)
+        lat_crop   = lat.isel(slices)
+        lon_crop   = lon.isel(slices)
+
+        ny_orig = field.sizes[spatial_dims[0]]
+        nx_orig = field.sizes[spatial_dims[1]]
+        ny_crop = field_crop.sizes[spatial_dims[0]]
+        nx_crop = field_crop.sizes[spatial_dims[1]]
+        print(
+            f"  Cropped grid: {ny_orig}×{nx_orig} → {ny_crop}×{nx_crop} "
+            f"({ny_orig * nx_orig:,} → {ny_crop * nx_crop:,} cells)"
+        )
+        return field_crop, mask_crop, lat_crop, lon_crop
 
     @property
     def basin_mask(self) -> xr.DataArray:

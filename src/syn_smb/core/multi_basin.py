@@ -384,3 +384,133 @@ def plot_multibasin_split_test(
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
         print(f"Saved: {save_path}")
     plt.show()
+
+
+def plot_multibasin_smb(
+    results:   dict[str, dict],
+    save_path: str | None = None,
+) -> None:
+    """
+    Two-column figure for each basin:
+      Left  — raw observed SMB with fitted linear trend overlaid
+      Right — detrended stochastic residuals (trend + seasonal removed)
+
+    One row per basin, stacked vertically. Each panel has its own y-axis.
+    Trend slope annotated in m w.e. yr⁻¹.
+
+    Parameters
+    ----------
+    results : dict
+        Output of multi_basin_run().
+    save_path : str or None
+    """
+    basins = list(results.keys())
+    n      = len(basins)
+    colors = _BASIN_COLORS[:n]
+
+    # fig, axes = plt.subplots(
+    #     n, 2,
+    #     figsize=(14, 1.5 * n),
+    #     gridspec_kw={"wspace": 0.08},
+    #     sharex=True,
+    # )
+
+    fig, axes = plt.subplot_mosaic(
+        [[0, 1]] * n,
+        figsize=(14, 1.5 * n),
+        gridspec_kw={"wspace": 0.08},
+        sharex=True,
+    )
+    for row in axes:
+        print(axes[row])
+    # fig.suptitle(
+    #     "Observed SMB (left) and stochastic residuals (right)",
+    #     fontsize=12,
+    # )
+    # axes[0, 0].set_title("Raw SMB + linear trend",  fontsize=10, pad=6)
+    # axes[0, 1].set_title("Detrended residuals",      fontsize=10, pad=6)
+
+    for row, (basin, color) in enumerate(zip(basins, colors)):
+        smb = results[basin]["smb"]
+        y   = smb.values.astype(float)
+
+        # Decimal-year x-axis
+        try:
+            t0  = smb.time.values[0]
+            yr0 = int(t0.year)
+            mo0 = int(t0.month)
+        except AttributeError:
+            yr0, mo0 = 1979, 1
+
+        month_idx = np.arange(len(y))
+        years     = yr0 + (mo0 - 1) / 12 + month_idx / 12
+
+        # Linear trend
+        t      = month_idx.astype(float)
+        coeffs = np.polyfit(t, y, 1)
+        trend  = np.polyval(coeffs, t)
+        slope_yr = coeffs[0] * 12.0
+
+        # Detrended residuals from fitted preprocessor
+        gen = results[basin]["generator"]
+        try:
+            residuals = np.asarray(gen.preprocessor.transform(smb)).flatten()
+        except Exception:
+            detrended     = y - trend
+            monthly_means = np.array([
+                detrended[month_idx % 12 == m].mean() for m in range(12)
+            ])
+            residuals = detrended - monthly_means[month_idx % 12]
+
+        # ── Left: raw SMB + trend ─────────────────────────────────────
+        ax_l = axes[str(row)][0]
+        ax_l.plot(years, y,
+                  color=color, lw=0.8, alpha=0.75, label="Observed SMB")
+        ax_l.plot(years, trend,
+                  color="black", lw=1.8, linestyle="--",
+                  label=f"Trend: {slope_yr:+.4f} m w.e. a\u207b\xb9")
+        ax_l.axhline(float(np.nanmean(y)),
+                     color=color, lw=1.0, linestyle=":", alpha=0.5)
+        ax_l.fill_between(years, trend, float(np.nanmean(y)),
+                           alpha=0.06, color=color)
+        ax_l.set_ylabel(f"{basin}\nSMB (m w.e.)", fontsize=8,
+                        color=color, fontweight="bold")
+        ax_l.legend(fontsize=7, loc="upper right", ncol=2,
+                    framealpha=0.9, edgecolor="lightgray")
+        ax_l.grid(True, alpha=0.25, linewidth=0.4)
+
+        # ── Right: detrended residuals ────────────────────────────────
+        ax_r = axes[row, 1]
+        
+        res_std = float(np.nanstd(residuals))
+        ax_r.plot(years, residuals, color=color, lw=0.7, alpha=0.80)
+        ax_r.axhline(0, color="black", lw=0.9, linestyle="--", alpha=0.6)
+        ax_r.fill_between(years, residuals, 0,
+                           where=(residuals >= 0),
+                           color=color, alpha=0.20,
+                           label=f"\u03c3 = {res_std:.4f} m w.e.")
+        ax_r.fill_between(years, residuals, 0,
+                           where=(residuals < 0),
+                           color=color, alpha=0.20)
+        ax_r.set_ylabel("Residual (m w.e.)", fontsize=8)
+        ax_r.legend(fontsize=7, loc="upper right",
+                    framealpha=0.9, edgecolor="lightgray")
+        ax_r.grid(True, alpha=0.25, linewidth=0.4)
+        # ax_r.set_ytick_params(right=True, labelsize=7)
+        # Shared x-axis ticks
+        yr_start = int(np.ceil(yr0 / 5)) * 5
+        yr_end   = int(years[-1])
+        ytks     = np.arange(yr_start, yr_end + 1, 5)
+        for ax in (ax_l, ax_r):
+            ax.set_xticks(ytks)
+            ax.set_xticklabels([str(y_) for y_ in ytks], fontsize=7)
+            ax.set_xlim(years[0], years[-1])
+
+    axes[-1, 0].set_xlabel("Year", fontsize=9)
+    axes[-1, 1].set_xlabel("Year", fontsize=9)
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Saved: {save_path}")
+    plt.show()

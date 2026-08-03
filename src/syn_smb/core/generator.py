@@ -294,8 +294,13 @@ class SMBGenerator:
 
             # Restore seasonal cycle (trend deliberately excluded for
             # synthetic series — see Preprocessor methodology notes)
+            # Restore seasonal cycle (trend deliberately excluded for
+            # synthetic series — see Preprocessor methodology notes).
+            # seasonal_amplitude_factor couples the annual-timescale
+            # experiments (default 1.0 reproduces the observed cycle).
             smb_full = self.preprocessor.inverse_transform(
-                smb_with_mean, add_trend=False
+                smb_with_mean, add_trend=False,
+                seasonal_amp_scale=experiment.seasonal_amplitude_factor,
             )
 
             smb_list.append(smb_full.expand_dims(member=[i]))

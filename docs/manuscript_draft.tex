@@ -1,0 +1,781 @@
+% =====================================================================
+%  Manuscript draft -- Synthetic SMB generation
+%  Body sections for the Copernicus (gmd) manuscript.
+%  Paste between \begin{document}...\end{document} of the copernicus
+%  template; requires references.bib. Figure/table numbers are auto
+%  via \ref{}; placeholders marked [[...]] need your input.
+%
+%  Verified citations are used throughout. Keys flagged VERIFY in
+%  references.bib (aloni2025, mouginot2017, vandalum2024, verjans2023,
+%  ultee2024, markovsky_inprep) must be confirmed before submission.
+% =====================================================================
+
+\title{Distribution-preserving spectral synthesis of surface mass balance
+forcing with controllable frequency structure}
+
+% \author[...]{...}  % fill per copernicus template
+
+\begin{abstract}
+Ice-sheet response to climate is driven not only by trends in the mean
+state but by climatic \emph{noise}: variability in surface mass balance
+(SMB) that spans annual to centennial timescales. Attributing the
+dynamical response of an ice sheet to a specific band of that variability
+is impossible from observations alone, because a single short record
+confounds all timescales in one realisation. We present a method that
+generates synthetic SMB series of arbitrary length that are statistically
+consistent with an observed record in both their marginal distribution and
+their power spectral density (PSD), and that permits controlled
+amplification or suppression of variance within named frequency bands. The
+method extends Fourier phase randomisation \citep{theiler1992,schreiber2000}
+with three components: a Gaussian rank transform that decouples spectral
+structure from the (right-skewed) marginal distribution; a semi-parametric
+inverse transform that yields physically continuous extremes under
+amplified forcing; and selective per-band PSD scaling that turns a
+statistically consistent generator into an instrument for controlled
+experiments. Calibrated on a 45-year, monthly RACMO2.4p1 record for the
+Pine Island Glacier basin \citep{vandalum2025}, the method preserves the
+observed mean to a ratio of $1.0000$, the variance to within $0.4\,\%$, and
+the seasonal cycle to an RMSE below $3\times10^{-4}$~m~w.e.~a$^{-1}$; the
+ensemble-mean PSD lies within the observed $95\,\%$ confidence interval at
+every resolved frequency. An out-of-sample calibration-split test confirms
+that the generator reproduces held-out statistics. Applied to PIG, the method
+also shows that the basin-integrated SMB residual is statistically
+indistinguishable from white noise across the annual-to-decadal range, so the
+band experiments are prescribed sensitivity tests rather than perturbations of
+an observed low-frequency spectrum. The same engine is
+generalised to the full basin field: the spatial SMB field is decomposed
+into empirical orthogonal functions (EOFs), each principal-component series
+is resynthesised by the identical 1-D engine, and the synthetic modes are
+recombined onto the fixed spatial patterns, yielding spatially coherent
+synthetic fields whose mean and variance maps and per-mode spectra match the
+observations. The method provides the forcing engine for controlled
+ice-sheet experiments, in both spatially uniform and spatially resolved
+form, and generalises to any geophysical field that is stationary after
+simple detrending.
+\end{abstract}
+
+
+% #####################################################################
+\introduction
+% #####################################################################
+
+The stability of marine ice sheets is governed by slow dynamics that
+integrate a noisy climatic forcing. Following the classical argument of
+\citet{hasselmann1976}, a slow system driven by short-correlation
+forcing accumulates variance preferentially at low frequencies, so the
+timescale structure of the forcing---not only its mean---shapes the
+long-term response. For the Antarctic Ice Sheet, surface mass balance
+(SMB) is a first-order control on this forcing, and the Pine Island
+Glacier (PIG) basin is its single largest dynamic contributor to sea-level
+rise \citep{rignot2019}. Understanding how the \emph{frequency structure} of
+SMB variability propagates into ice dynamics is therefore central to
+bounding sea-level projections.
+
+Observed SMB records are too short to answer this question directly. A
+45-year record contains only a handful of decadal cycles, so annual and
+decadal variability are confounded within a single realisation, and the
+record is far shorter than the multi-century response time of the ice
+sheet. Isolating the dynamical contribution of a given band of SMB
+variability requires forcing series that are (i) long enough for the ice
+model to reach a quasi-steady state, (ii) statistically consistent with the
+observations, (iii) available as independent realisations, and---critically
+for controlled experiments---(iv) perturbable one frequency band at a time
+while all other statistics are held fixed.
+
+Two families of methods bear on this problem. Fourier phase randomisation
+generates surrogate series that preserve the linear (second-order)
+properties of a signal while randomising everything else
+\citep{theiler1992,schreiber2000}; it is the natural engine for
+spectrally-consistent synthesis, but in its standard form it assumes a
+Gaussian marginal distribution, which SMB---right-skewed and bounded below
+by zero---violates. Separately, stochastic forcing generators have been
+developed specifically for ice-sheet models: \citet{muruganandham2023}
+decompose a spatial ocean-forcing field into empirical orthogonal functions
+(EOFs) and resynthesise the principal-component (PC) time series to produce
+independent realisations of internal variability, and catchment-scale
+stochastic SMB and ocean-forcing parameterisations have been built on
+autoregressive models \citep[e.g.][]{ultee2024,verjans2023}. These methods
+target \emph{uncertainty quantification}---sampling plausible forcing
+trajectories---rather than the \emph{mechanistic isolation} of individual
+timescales. \citet{muruganandham2023} in particular note the controlled
+perturbation of variability bands as a direction left for future work.
+
+This paper develops a phase-randomisation method for SMB that closes both
+gaps. Our contributions are:
+\begin{description}
+  \item[A1 -- distribution-preserving synthesis.] A Gaussian rank transform
+  decouples the marginal distribution from the spectral structure, so phase
+  randomisation operates in valid Gaussian space while the synthetic series
+  reproduce the observed distribution exactly.
+  \item[A2 -- semi-parametric tail extrapolation.] A spliced
+  empirical/parametric inverse transform allows synthetic extremes to
+  exceed the observed range continuously, removing the variance-saturation
+  artefact that purely empirical inverse transforms suffer under amplified
+  forcing.
+  \item[A3 -- frequency-band variance control.] Selective scaling of the
+  PSD within named period bands amplifies or suppresses variance in those
+  bands while holding the mean, the full marginal distribution, and the
+  seasonal cycle fixed---converting the generator into an instrument for
+  controlled experiments. This is the central advance; A1 and A2 are the
+  machinery that make it valid.
+  \item[A4 -- spatially coherent generalisation.] The same engine is applied
+  to the full basin field through an EOF decomposition: each principal
+  component is resynthesised by the identical 1-D engine and recombined onto
+  fixed spatial patterns, so spatial coherence is preserved by construction
+  and the basin-integrated scalar is recovered as the single-mode limit.
+\end{description}
+The remainder of the paper describes the data (Sect.~[[data]]), the method
+component by component---including its spatial generalisation
+(Sect.~[[eof]])---followed by in- and out-of-sample validation of both the
+scalar and the field pipelines (Sect.~[[validation]]), a demonstration of
+band control (Sect.~[[demo]]), and scope and limitations
+(Sects.~[[discussion]]--[[limitations]]). An overview of the workflow, with
+the 1-D core and its EOF wrapper, is given in Fig.~\ref{fig:pipeline}.
+
+
+% #####################################################################
+\section{Data}\label{sec:data}
+% #####################################################################
+
+We calibrate the method on basin-integrated SMB from RACMO2.4p1
+\citep{vandalum2025}, the regional climate model's most recent Antarctic
+product, run at 11~km horizontal resolution and forced at its lateral
+boundaries by ERA5 \citep{hersbach2020}. RACMO2.4p1 introduces revised
+snow-hydrometeor advection and blowing-snow physics relative to earlier
+versions \citep{vandalum2024}, and its modelled SMB, energy budget and
+near-surface climate compare well with observations \citep{vandalum2025}.
+We use the model at its native 11~km resolution on its rotated
+latitude--longitude grid. The Pine Island Glacier drainage basin is
+delineated using the MEaSUREs Antarctic Boundaries product
+\citep{mouginot2017}: the basin polygon is rasterised onto the RACMO grid so
+that every grid cell whose centre falls inside the polygon is retained. For
+the scalar (1-D) pipeline we integrate the monthly SMB over the basin
+(\texttt{smbgl}) to a single series over January~1979--December~2023, giving
+$n=540$ monthly values in m~w.e.~a$^{-1}$. For the field (2-D) pipeline we
+retain the full masked field on the same grid, cropped to the basin bounding
+box (with a two-cell margin) to reduce the domain from the full model grid
+to $\approx[[n_y\times n_x]]$ cells, of which $[[n_{\mathrm{valid}}]]$ lie
+inside the basin.
+
+PIG is chosen because it is both the most demanding and the most
+policy-relevant single-basin test case: it dominates present-day Antarctic
+mass loss and is strongly dynamically sensitive \citep{rignot2019}. The
+observed basin-mean SMB is right-skewed with a lower bound near zero
+(mean~$\approx0.036$, standard deviation~$\approx0.046$~m~w.e.~a$^{-1}$;
+Table~\ref{tab:data}), which directly motivates the distribution-preserving
+transform of Sect.~[[gt]]. Summary statistics and a decomposition of the
+record into trend, seasonal cycle and stochastic residual are shown in
+Fig.~\ref{fig:data}.
+
+Both pipelines share the same fitting and generation logic; the field
+pipeline (Sect.~[[eof]]) reduces to the scalar pipeline when a single spatial
+mode is retained.
+
+
+% #####################################################################
+\section{Methods}\label{sec:methods}
+% #####################################################################
+
+The method is organised as a fit pipeline and a generate pipeline that are
+mirror images: every forward operation applied to the observations has an
+inverse applied to the synthetic series (Fig.~\ref{fig:pipeline}). The
+fundamental decomposition is
+\begin{equation}\label{eq:decomp}
+  x(t) \;=\; \mu \;+\; \tau(t) \;+\; s\!\left(m(t)\right) \;+\; r(t),
+\end{equation}
+where $x(t)$ is the observed monthly SMB, $\mu$ its record mean, $\tau(t)$ a
+linear trend, $s(m)$ the climatological anomaly of calendar month
+$m\in\{1,\dots,12\}$, and $r(t)$ the stochastic residual that is the target
+of synthesis. The residual is assumed weakly stationary---constant mean,
+variance and autocovariance---after removal of the deterministic terms; this
+assumption is tested in Sect.~\ref{sec:pre} and probed out-of-sample in
+Sect.~\ref{sec:validation}. Synthesis of $r(t)$ is performed entirely in
+Gaussian space, so that the spectral structure and the marginal distribution
+are manipulated independently. Two asymmetries in the pipeline are deliberate
+and act as correctness guarantees. First, $\mu$ is removed once and re-added
+exactly once, in the generator, so no component can drop or double-count it.
+Second, $\tau(t)$ is removed at fit time but is not re-added to synthetic
+series, because extrapolating a 45-year linear trend across a millennial
+synthetic record is physically unjustified and would mask the variability
+signal under study \citep[cf.][]{hasselmann1976}; the synthetic forcing is
+therefore stationary in its mean by design.
+
+\paragraph{Key equations.} The essential relations, referenced throughout,
+are: the signal decomposition, Eq.~(\ref{eq:decomp}); the Gaussian rank
+transform and its semi-parametric inverse, Eqs.~(\ref{eq:rank}) and
+(\ref{eq:qsemi}); the spectral confidence interval, Eq.~(\ref{eq:ci}); the
+band-scaling rule and Parseval amplitude construction, Eqs.~(\ref{eq:band})
+and (\ref{eq:amp}); the phase-randomised synthesis step, Eq.~(\ref{eq:phase});
+and, for the spatial pipeline, the area-weighted EOF decomposition and field
+reconstruction, Eqs.~(\ref{eq:svd}) and (\ref{eq:recon2d}). Equations
+(\ref{eq:qsemi})--(\ref{eq:amp}) and (\ref{eq:svd})--(\ref{eq:recon2d}) are
+the load-bearing results of the paper: they define, respectively, how the
+marginal distribution is preserved and controllably extrapolated, how
+variance is injected into a named frequency band, and how a spatially
+coherent field is built from independently-synthesised modes.
+
+\subsection{Preprocessing: trend and seasonal removal}\label{sec:pre}
+
+Both the Gaussian transform and the spectral estimator assume a stationary,
+zero-mean input, which raw SMB is not: it carries a non-zero mean, a
+deterministic annual cycle, and a possible long-term trend
+\citep{vonstorch1999,wilks2011}. The preprocessor estimates the deterministic
+terms of Eq.~(\ref{eq:decomp}) in order. The trend $\tau(t)$ is fitted as a
+degree-1 polynomial by ordinary least squares along the time axis, and its
+coefficients (not its evaluated values) are stored, so the trend
+can be re-evaluated on any time coordinate. A degree-1 fit is the most
+conservative defensible choice for a 45-year record: higher-order
+polynomials would absorb multi-decadal variability that belongs to the
+stochastic signal and would confound the decadal-band experiment of
+Sect.~[[demo]]. The seasonal term $s(m)$ is then estimated as the mean for
+each of the twelve calendar months, computed \emph{on the detrended series}
+so that a residual trend does not bias the climatology, and subtracted. An
+empirical monthly climatology is preferred over harmonic regression because
+it makes no shape assumption and each month is well-sampled ($45$
+observations). Removing the seasonal cycle reduces the power at the annual
+frequency by a factor of $\approx30$, leaving in the residual only the
+stochastic year-to-year variation in seasonal amplitude, which is the
+physically meaningful quantity to synthesise. Stationarity of the residuals
+is confirmed with an augmented Dickey--Fuller test
+\citep{dickey1979,said1984}, which rejects the unit-root null at the
+$5\,\%$ level; we note that the ADF test has limited power at $n=540$ and
+provides a necessary but not sufficient condition for stationarity.
+
+\subsection{Gaussian rank transform (A1)}\label{sec:gt}
+
+Phase randomisation requires a Gaussian input. We obtain one by a rank
+transform: the residuals $r_1,\dots,r_n$ are sorted, the $i$-th order
+statistic $r_{(i)}$ is assigned the Hazen plotting position
+\citep{hazen1914}, and each value is mapped to the corresponding
+standard-normal quantile,
+\begin{equation}\label{eq:rank}
+  p_i=\frac{i-\tfrac{1}{2}}{n},
+  \qquad
+  g_{(i)}=\Phi^{-1}(p_i),
+  \qquad i=1,\dots,n,
+\end{equation}
+where $\Phi$ is the standard-normal CDF. The transformed series takes
+exactly the values $\{\Phi^{-1}(p_i)\}$, i.e.\ its empirical distribution
+matches the standard normal at every quantile by construction (a one-sample
+Kolmogorov--Smirnov test on the PIG record gives $D=0.0009$); the Hazen
+positions are strictly interior to $(0,1)$, so all quantiles are finite.
+Because the map from ranks to values is monotone, the transform preserves
+the ordering, and therefore the rank-correlation structure, of the
+residuals. This is the probability-integral
+transform in rank form \citep{rosenblatt1952}, applied here specifically to
+decouple the marginal distribution from the spectrum so that phase
+randomisation in Gaussian space does not distort the distribution
+\citep{theiler1992}. No subsequent step alters the marginal distribution
+except the inverse of this transform.
+
+\subsection{Semi-parametric inverse transform (A2)}\label{sec:inv}
+
+Back-transformation maps a synthetic Gaussian series to the physical
+distribution: $u=\Phi(g)$ (clipped to $[10^{-15},1-10^{-15}]$), followed by
+a semi-parametric inverse cumulative distribution function (CDF),
+\begin{equation}\label{eq:qsemi}
+  Q_{\mathrm{semi}}(u)=
+  \begin{cases}
+    Q_{\mathcal{N}}(u;\hat\mu_t,\hat\sigma_t)+\delta_{\mathrm{low}},
+      & u < p_1,\\[2pt]
+    \mathrm{interp}\!\left(u;\,\{p_i\},\{r_{(i)}\}\right),
+      & p_1 \le u \le p_n,\\[2pt]
+    Q_{\mathcal{N}}(u;\hat\mu_t,\hat\sigma_t)+\delta_{\mathrm{high}},
+      & u > p_n,
+  \end{cases}
+\end{equation}
+where $Q_{\mathcal{N}}$ is the quantile function of a normal distribution
+fitted to the residuals by maximum likelihood, and the continuity offsets
+\begin{equation}\label{eq:delta}
+  \delta_{\mathrm{low}} = r_{(1)}-Q_{\mathcal{N}}(p_1),
+  \qquad
+  \delta_{\mathrm{high}} = r_{(n)}-Q_{\mathcal{N}}(p_n)
+\end{equation}
+make the spliced function continuous at both boundaries by construction
+(verified numerically to $<10^{-10}$). Within the observed range the
+synthetic marginal therefore follows the empirical distribution of the
+training residuals, interpolating linearly between order statistics; beyond
+it, extremes follow the shifted normal tail.
+
+The extrapolation is essential for the band experiments. A purely empirical
+inverse CDF clips every value to the observed minimum and maximum, so under
+$5\times$--$10\times$ band amplification the extremes pile up at those
+bounds and the synthetic variance \emph{saturates} rather than scaling with
+the imposed factor---conflating spectral structure with an artificial
+variance ceiling and rendering the controlled experiments
+uninterpretable. The parametric tail removes this ceiling; the splice
+points sit at the exact empirical boundaries, so the round-trip is exact
+for all training data (maximum pointwise error $<3\times10^{-9}$). A normal
+tail is a deliberate simplification: for right-skewed residuals it
+underestimates large positive anomalies, and a generalised Pareto tail
+fitted to exceedances would be the principled alternative
+\citep{coles2001}; we adopt the normal tail because the band experiments
+already extrapolate into a regime where the exact tail shape is a secondary
+concern, and we flag this in Sect.~[[limitations]]. Finally, because passing
+a symmetric Gaussian through the asymmetric map of Eq.~(\ref{eq:qsemi})
+produces a non-zero sample mean---large enough under $10\times$ scaling to
+masquerade as a change in mean accumulation---the residual mean is
+subtracted inside the inverse transform, guaranteeing that every synthetic
+series has exactly zero mean before $\mu$ is restored.
+
+\subsection{Spectral estimation}\label{sec:psd}
+
+The one-sided PSD of the Gaussianised residuals is estimated by Welch's
+method \citep{welch1967}: segments of $\texttt{nperseg}=60$ months (5~yr)
+with $50\,\%$ overlap and a Hann window, giving $K=17$ averaged
+periodograms at $31$ frequencies. Segment averaging trades frequency
+resolution for variance reduction. The segment length sets the Rayleigh
+frequency $\Delta f = f_s/\texttt{nperseg} = 0.2$~cycles~yr$^{-1}$, so the
+longest independently resolved period is 5~yr: the annual band
+($[0.8,1.5]$~yr, i.e.\ $[0.67,1.25]$~cycles~yr$^{-1}$) is covered by three
+resolved bins, whereas the decadal band ($[8,20]$~yr, i.e.\
+$[0.05,0.125]$~cycles~yr$^{-1}$) lies entirely \emph{below} $\Delta f$ and
+contains no independently resolved bin. Power assigned to the decadal band
+during synthesis is therefore obtained by interpolation between the
+zero-frequency term and the lowest resolved bin, rather than estimated from
+data at those frequencies; the consequences for the interpretation of the
+decadal experiment are set out in Sect.~[[limitations]]. The $(1-\alpha)$
+confidence interval
+on the estimate $\hat P(f)$ follows the chi-squared sampling distribution of
+an averaged periodogram \citep{percival1993},
+\begin{equation}\label{eq:ci}
+  \left[\;
+    \frac{\nu\,\hat P(f)}{\chi^2_{\nu,\,1-\alpha/2}},\;\;
+    \frac{\nu\,\hat P(f)}{\chi^2_{\nu,\,\alpha/2}}
+  \;\right],
+  \qquad \nu = 2K = 34,
+\end{equation}
+which treats the $K$ windowed segments as independent; the $50\,\%$ overlap
+correlates neighbouring segments, so Eq.~(\ref{eq:ci}) is an approximation,
+and the resulting $\approx2.6\times$ ratio between the
+upper and lower bounds is the honest statement of spectral uncertainty
+imposed by a 45-year record. The observed PSD and its $95\,\%$ interval are
+shown in Fig.~\ref{fig:psd}.
+
+The choice $\texttt{nperseg}=60$ is supported empirically. Because Welch's
+method removes the mean of each segment, variance carried by fluctuations
+\emph{between} segments---that is, at periods longer than the segment---is
+not represented in the estimate. For the PIG residual this loss is
+negligible: the $\texttt{nperseg}=60$ estimate accounts for $99.7\,\%$ of the
+total residual variance (Parseval check), so essentially no power is being
+discarded at low frequencies. The reason is that the residual is close to
+white. Its lag-1 autocorrelation is $\phi=0.08$ (an $e$-folding memory of
+$0.4$~months), and band-integrated multitaper estimates on the full record
+(NW${}=1.5$, resolution bandwidth $0.067$~cycles~yr$^{-1}$) place only
+$1.7\,\%$ of the residual variance in the decadal band and $11.5\,\%$ in the
+annual band, against white-noise expectations of $1.25\,\%$ and $9.7\,\%$
+respectively. Neither excess is distinguishable from a white-noise or an
+AR(1) null (Monte Carlo, 500 surrogates; observed at the 84th and 78th
+percentiles respectively). Within the resolution of a 45-year record, PIG
+basin-integrated SMB variability is therefore statistically indistinguishable
+from white noise across the annual-to-decadal range. This is itself a
+result---and it is precisely the forcing regime for which the
+noise-integration argument of \citet{hasselmann1976} predicts that a slow
+system will generate red-spectrum variability from white-spectrum forcing.
+
+\subsection{Phase randomisation, band scaling and ensemble synthesis
+(A3)}\label{sec:synth}
+
+To synthesise a series of $N$ months, the fitted PSD is
+interpolated onto the synthetic frequency grid (for a 1000-year series,
+$6001$ points against the $31$ fitted). Band scaling is applied here:
+within a target period band $[p_{\min},p_{\max}]$ the interpolated PSD is
+multiplied by a factor $\gamma_b$,
+\begin{equation}\label{eq:band}
+  \tilde P(f)=
+  \begin{cases}
+    \gamma_b\,\hat P(f), & 1/p_{\max}\le f \le 1/p_{\min},\\[2pt]
+    \hat P(f), & \text{otherwise},
+  \end{cases}
+\end{equation}
+which, by Parseval's theorem, scales the Gaussian-space variance contributed
+by that band by $\gamma_b$ and the band standard deviation by
+$\sqrt{\gamma_b}$. Because the inverse transform of Eq.~(\ref{eq:qsemi}) is
+monotone but nonlinear, the corresponding scaling of the \emph{physical}
+band variance is approximate rather than exact; the realised scaling is
+quantified empirically in Sect.~[[demo]]. Equation~(\ref{eq:band}) is the
+operational definition of a controlled experiment (A3) and follows the
+band-perturbation direction that \citet{muruganandham2023} identify as
+future work. Fourier amplitudes are constructed from the (scaled) PSD as
+\begin{equation}\label{eq:amp}
+  A_k=\sqrt{\tilde P(f_k)\,\Delta f\,N},
+\end{equation}
+which is the discrete Parseval-consistent normalisation
+\citep{percival1993}: summing $|A_k|^2$ over frequencies recovers the target
+variance. Each ensemble member $j$ then draws independent phases and inverts
+to the time domain,
+\begin{equation}\label{eq:phase}
+  Z_k^{(j)}=A_k\,e^{i\phi_k^{(j)}},\qquad
+  \phi_k^{(j)}\sim U(-\pi,\pi),\qquad
+  g^{(j)}=\mathrm{irfft}\!\left(Z^{(j)}\right)\big/\hat\sigma^{(j)},
+\end{equation}
+with the zero-frequency and Nyquist phases fixed at zero so that the inverse
+transform is real-valued, and $\hat\sigma^{(j)}$ the sample standard
+deviation of the inverted series, enforcing exact unit variance per member.
+
+Two properties follow directly. Because the amplitude spectrum is
+deterministic, $\mathbb{E}\,|Z_k|^2=A_k^2$ independently of the phase draw,
+so the ensemble-mean PSD converges to the target
+\citep{theiler1992,schreiber2000}; and because phases are drawn
+independently across members, the expected cross-covariance between any two
+members vanishes at all lags (sample cross-covariances fluctuate around zero
+at the $O(N^{-1/2})$ level expected for independent series). The
+unit-variance normalisation in Eq.~(\ref{eq:phase}) removes member-to-member
+variance drift introduced by interpolation onto the fine grid without
+altering the spectral shape (it is a scalar multiplication).
+
+\subsection{Reconstruction and experiment configuration}\label{sec:recon}
+
+The synthetic Gaussian series is passed back through the inverse transform
+(Sect.~\ref{sec:inv}), the observed mean is added once, and the seasonal
+cycle is restored; the trend is not restored (Sect.~\ref{sec:pre}). Each
+ensemble is fully specified by an \texttt{Experiment} configuration---the
+number of years and members, a random seed, and the set of band scale
+factors---which is serialised alongside the output so that every synthetic
+dataset is reproducible from its configuration alone (RACMO input
+$\rightarrow$ configuration $\rightarrow$ ensemble). Within an experiment
+suite the members share a random seed across band conditions, so that any
+downstream difference is attributable to the band scaling rather than to the
+phase draws; independent seeds are used when quantifying ensemble spread.
+
+\subsection{Spatial generalisation via EOF decomposition (A4)}\label{sec:eof}
+
+The scalar engine above generalises to the full basin field by inserting an
+EOF decomposition before the spectral engine and an EOF recomposition after
+it; the 1-D Gaussian transform, spectral synthesiser and experiment
+configuration are reused without modification, and applied once per retained
+mode.
+
+\subsubsection{Spatial preprocessing}
+Trend and seasonal cycle are removed \emph{per grid cell}. A degree-1
+polynomial is fitted independently at each cell (over an integer time index,
+to avoid calendar-arithmetic artefacts), the per-cell time mean is stored
+separately, and a per-cell monthly climatology is computed on the detrended,
+mean-centred field. Removing the seasonal cycle in physical space, before the
+decomposition, is deliberate: the seasonal cycle of SMB is itself spatially
+structured (its amplitude and phase vary with orography and distance from the
+coast), so leaving it in would cause the leading EOF to capture the spatial
+pattern of the \emph{seasonal cycle} rather than the stochastic variability
+of interest. As in the scalar case, the per-cell mean is restored during
+reconstruction but the per-cell trend is not.
+
+\subsubsection{EOF decomposition}
+The residual field is flattened to a matrix
+$\mathbf{X}\in\mathbb{R}^{T\times P}$ over the $P$ valid (in-basin) cells and
+area-weighted per cell $j$ by $w_j=\sqrt{\cos\phi_j}$ ($\phi_j$ the cell
+latitude), so that the decomposition minimises area-weighted rather than
+cell-count variance \citep{north1982,hannachi2007}. An economy singular value
+decomposition of the weighted matrix then defines the modes,
+\begin{equation}\label{eq:svd}
+  \mathbf{X}_w=\mathbf{X}\,\mathrm{diag}(w)
+  =\mathbf{U}\mathbf{S}\mathbf{V}^{\top},
+  \qquad
+  \mathbf{E}=\mathbf{V}^{\top},\quad
+  \mathbf{P}=\mathbf{U}\mathbf{S},\quad
+  \lambda_k=\frac{s_k^2}{\sum_j s_j^2},
+\end{equation}
+where the rows of $\mathbf{E}$ are the orthonormal
+spatial patterns (EOFs), the columns of $\mathbf{P}$ the principal-component
+series, and $\lambda_k$ the fraction of area-weighted variance explained by
+mode $k$ \citep{lorenz1956,preisendorfer1988}. EOF
+signs are standardised (first non-zero loading positive) for
+interpretability. The decomposition is truncated at $K$ modes, chosen as the
+smallest $K$ whose cumulative explained variance reaches a target threshold
+(the implementation reports the $80\,\%$ and $95\,\%$ thresholds and defaults
+to $K=[[K]]$ modes, explaining $[[\text{cumvar}]]\%$ of the area-weighted
+residual variance for PIG; see the scree plot, Fig.~\ref{fig:scree}). North's
+rule of thumb \citep{north1982} bounds the modes that are well separated from
+their neighbours given the effective sample size, and is used to flag modes
+whose patterns should not be over-interpreted.
+
+\subsubsection{Per-mode synthesis and recombination}
+Each retained PC is a scalar, zero-mean series and is passed through the
+identical 1-D pipeline: the Gaussian rank transform (Sect.~\ref{sec:gt}), the
+Welch spectral fit (Sect.~\ref{sec:psd}), and phase-randomised synthesis with
+optional band scaling (Sect.~\ref{sec:synth}). Modes with negligible variance
+are skipped. For an ensemble member, each (member, mode) pair is synthesised
+with an independent random-number stream, so that modes are mutually
+independent and members are independent, while the whole ensemble remains
+reproducible from the experiment seed. The synthetic PCs are back-transformed
+to physical units, recombined onto the fixed spatial patterns, and
+un-weighted,
+\begin{equation}\label{eq:recon2d}
+  \tilde r(\mathbf{x}_j,t)
+  = \frac{1}{w_j}\sum_{k=1}^{K}\widetilde{PC}_k(t)\,E_k(\mathbf{x}_j),
+\end{equation}
+after which the per-cell seasonal cycle and mean are restored,
+giving a synthetic field ensemble with dimensions
+(member, time, $y$, $x$). Because the spatial patterns are held fixed and only
+the temporal PCs are resynthesised, the synthetic field reproduces the
+observed spatial covariance structure of the retained modes by
+construction---the same principle
+\citet{muruganandham2023} use for ocean forcing, here applied to atmospheric
+SMB with the distribution-preserving, band-controllable 1-D engine acting on
+each mode. Band scaling (A3) applied to a mode perturbs the temporal
+variability of a coherent spatial pattern, not of individual grid cells. The
+basin-integrated scalar of Sects.~\ref{sec:pre}--\ref{sec:recon} is the
+single-mode limit of this construction.
+
+
+% #####################################################################
+\section{Validation}\label{sec:validation}
+% #####################################################################
+
+We distinguish in-sample fidelity---necessary but circular, since the
+generator is fitted and scored on the same record---from out-of-sample
+generalisation, which is the primary defence against overfitting.
+
+\subsection{In-sample fidelity}
+
+Across the standard experiments the generator preserves the deterministic
+components to numerical precision: the mean ratio (synthetic/observed,
+pooled over members and time) is
+$1.0000$ for all experiments, including $10\times$ band scaling; the
+variance ratio is $\approx0.996$; and the seasonal-cycle RMSE is
+$\approx2\times10^{-4}$~m~w.e.~a$^{-1}$, i.e.\ floating-point accumulation
+error (Table~\ref{tab:metrics}). Mean preservation is exact by construction
+(Sect.~\ref{sec:inv}); the small variance deficit arises from linear
+interpolation between order statistics in Eq.~(\ref{eq:qsemi}), which
+slightly smooths the empirical distribution. Spectral and temporal fidelity
+are measured
+by the PSD RMS error and the lag-1 and lag-12 autocorrelation errors; for
+band-scaled experiments the PSD error is \emph{expected} to rise in the
+scaled band, and that rise is part of the intended perturbation rather than
+a defect (Sect.~[[demo]]).
+
+\subsection{Spectral coverage}
+
+The strongest in-sample result is spectral coverage: the ensemble-mean PSD,
+computed with the same Welch parameters as the fit, lies within the fitted
+$95\,\%$ confidence interval at all $31$ frequencies (coverage $=1.000$),
+with the synthetic/observed PSD ratio falling in $[0.68,1.33]$ across the
+band (Fig.~\ref{fig:valsuite}a). The synthetic ensemble thus reproduces the
+observed spectrum within its own estimated uncertainty.
+
+\subsection{Out-of-sample calibration-split test}
+
+To break the circularity of in-sample scoring we split the record at its
+midpoint ($\approx$2001), fit an independent generator on each half, and
+score each against the held-out half in both directions
+\citep{michaelsen1987}. The mean ratio is $1.19$ and $0.84$ and the variance
+ratio $1.29$ and $0.78$ in the two directions (Table~\ref{tab:split}). These
+departures from unity are not pipeline failures: they reflect a genuine
+difference in mean and variance between the two halves of the record---the
+same non-stationarity that motivates the trend removal in
+Sect.~\ref{sec:pre}. The test demonstrates that spectral structure fitted on
+one half suffices to reproduce the statistics of the other, which is the
+direct answer to the objection that the synthetic series are merely the
+observed data with randomised phases.
+
+\subsection{Ensemble convergence and representativeness}
+
+The variance ratio is stable at $\approx0.995$ from as few as five members,
+and the mean ratio is exactly $1.0$ for all ensemble sizes; we adopt $30$
+members as a conservative choice for reliable tail and return-period
+estimates rather than for mean or variance convergence
+(Table~\ref{tab:convergence}). Finally, drawing 45-year windows from a
+1000-year ensemble places the observed 45-year statistics within the
+synthetic window distribution (Fig.~\ref{fig:windows}), which reframes the
+question ``does the synthetic match the observations?'' as the stronger
+``is the observed record a typical realisation of the fitted process?''.
+
+\subsection{Validation of the spatial field}\label{sec:spatialval}
+
+The field pipeline is validated with the spatial analogue of the scalar
+suite, reusing the 1-D validator on each mode. Four questions are addressed.
+First, does the synthetic ensemble preserve the observed \emph{spatial mean
+field}? The Pearson correlation between the observed and synthetic per-cell
+time-mean maps is $[[\text{mean\_map\_corr}]]$, and the global mean ratio is
+$[[\text{mean\_ratio\_2D}]]$. Second, is the \emph{spatial distribution of
+variance} reproduced? The correlation between the observed and synthetic
+per-cell variance maps is $[[\text{var\_map\_corr}]]$ with a domain-mean
+variance ratio of $[[\text{var\_map\_ratio}]]$; the observed, synthetic and
+ratio maps are shown in Fig.~\ref{fig:varmaps}. Third, do the \emph{modes
+carry the correct temporal spectrum}? Running the scalar spectral check on
+each PC shows that the Gaussianised observed PC spectrum and the fitted PSD
+agree within the $95\,\%$ confidence band for the leading modes
+(Fig.~\ref{fig:pcpsd}); the $K$ retained modes capture
+$[[\text{eof\_cumvar}]]\%$ of the area-weighted residual variance. Fourth,
+does the field pipeline \emph{generalise out of sample}? A spatial
+calibration-split test---fitting the full field pipeline (preprocessing, EOF,
+per-mode synthesis) on one half of the record and scoring the synthetic field
+against the held-out half in both directions---returns mean-map correlations
+of $[[\text{split\_2D}]]$, with the same trend-driven mean and variance
+asymmetry seen in the scalar test. Together these confirm that the synthetic
+fields reproduce the observed spatial covariance structure of the retained
+modes, not merely the basin-mean statistics.
+
+
+% #####################################################################
+\section{Demonstration of frequency-band control}\label{sec:demo}
+% #####################################################################
+
+We finally verify that band scaling produces clean perturbations at the SMB
+level, independent of any ice-dynamic model. We define an annual band of
+$[0.8,1.5]$~yr and a decadal band of $[8,20]$~yr. Because the observed
+residual is statistically indistinguishable from white noise
+(Sect.~\ref{sec:psd}), these experiments are \emph{prescribed sensitivity}
+experiments: they impose a specified redistribution of variance across
+timescales and ask what an ice sheet does with it. They are not perturbations
+of an observationally constrained decadal spectrum, and we do not claim them
+to be.
+
+Amplifying a band multiplies the synthetic Gaussian-space power there by the
+imposed factor $\gamma_b$ (Eq.~\ref{eq:band}; Fig.~\ref{fig:bands}a). The
+per-member normalisation to unit variance in Eq.~(\ref{eq:phase}) means that
+band scaling \emph{redistributes} variance rather than adding it. Writing
+$s_b$ for the baseline fraction of variance in band $b$, the post-scaling
+variance ratios are
+\begin{equation}\label{eq:redistrib}
+  \frac{\sigma^2_{\mathrm{in}}(\gamma_b)}{\sigma^2_{\mathrm{in}}(1)}
+  = \frac{\gamma_b}{1+(\gamma_b-1)s_b},
+  \qquad
+  \frac{\sigma^2_{\mathrm{out}}(\gamma_b)}{\sigma^2_{\mathrm{out}}(1)}
+  = \frac{1}{1+(\gamma_b-1)s_b},
+\end{equation}
+so total variance is conserved, in-band variance rises by less than
+$\gamma_b$, and out-of-band variance necessarily falls. The invariants that
+do hold exactly are the mean (Sect.~\ref{sec:inv}), the total variance, the
+full marginal distribution (KS statistic unchanged) and the seasonal cycle
+(Table~\ref{tab:bands}).
+
+Equation~(\ref{eq:redistrib}) has a consequence for experiment design that is
+easy to miss: the same nominal factor buys very different perturbations in
+the two bands, because their baseline shares differ by nearly an order of
+magnitude ($s_{\mathrm{dec}}=0.017$, $s_{\mathrm{ann}}=0.115$). At
+$\gamma_b=10$ the decadal band reaches $14\,\%$ of total variance while
+out-of-band variance falls by $13\,\%$; the annual band reaches $57\,\%$
+while out-of-band variance falls by $51\,\%$. Making the decadal band carry
+half the total variance requires $\gamma_b\approx59$, against
+$\gamma_b\approx8$ for the annual band. Experiments intended to be compared
+against one another should therefore be matched on the realised variance
+partition rather than on the nominal factor, and we report both
+(Table~\ref{tab:bands}). With that matching, experiments differ only in how
+variance is distributed across timescales---the interpretive contract that
+the companion study relies on \citep{markovsky_inprep}.
+
+
+% #####################################################################
+\section{Discussion}\label{sec:discussion}
+% #####################################################################
+
+The method supplies long, stationary, statistically-consistent and
+independently-replicated SMB forcing whose spectral content can be
+controlled band by band---the four requirements set out in the
+introduction, plus the fifth that distinguishes it from prior work. It
+extends Fourier phase randomisation \citep{theiler1992,schreiber2000} with a
+distribution-preserving transform (A1) and continuous tails (A2), and it
+operationalises the band-perturbation direction that \citet{muruganandham2023}
+left open (A3), applied to atmospheric SMB rather than ocean forcing. Unlike
+autoregressive stochastic parameterisations aimed at uncertainty
+quantification \citep{ultee2024,verjans2023}, it is designed for the
+mechanistic isolation of individual timescales. Nothing in the construction
+is specific to PIG or to SMB: it applies to any scalar geophysical series
+that is stationary after simple detrending, and, through the EOF extension
+(Sect.~\ref{sec:eof}), to spatially coherent fields. The method controls the
+forcing only; it makes no claim about ice response, which is the subject of
+the companion paper \citep{markovsky_inprep}.
+
+The PIG application also clarifies what the band experiments mean. Finding
+the observed residual to be near-white is not a negative result: it is the
+forcing regime in which \citet{hasselmann1976} predicts that a slow system
+generates red-spectrum variability by integration alone, with no
+corresponding structure in the forcing. Any decadal signal in the modelled
+ice response to baseline forcing is therefore attributable to the ice
+dynamics rather than inherited from the SMB. Against that baseline, the
+band-scaled experiments become explicit counterfactuals---if SMB variability
+were concentrated at annual or at decadal timescales, with the same total
+variance and the same marginal distribution, how would the response differ?
+That is a sharper question than perturbing an already-structured spectrum,
+and it is answerable precisely because the baseline is unstructured.
+
+
+% #####################################################################
+\section{Limitations}\label{sec:limitations}
+% #####################################################################
+
+Several caveats bound the method's applicability.
+\emph{Stationarity.} The Welch PSD and empirical CDF assume the 1979--2023
+record is stationary; the calibration-split asymmetry shows it is not
+strictly so, and the fitted spectral model is a temporal average. Linear
+detrending addresses only first-order non-stationarity.
+\emph{Decadal resolution.} At $\texttt{nperseg}=60$ the Rayleigh frequency is
+$0.2$~cycles~yr$^{-1}$, so the decadal band
+($[0.05,0.125]$~cycles~yr$^{-1}$) contains no independently resolved
+spectral estimate; its power is set by interpolation between the
+zero-frequency term and the lowest resolved bin. Two independent checks show
+that little is lost by this: the estimate accounts for $99.7\,\%$ of the
+residual variance, and full-record multitaper estimates find no decadal
+excess distinguishable from a white or AR(1) null (Sect.~\ref{sec:psd}). The
+segment length is therefore not the binding constraint---the record is. A
+45-year series contains at most four or five realisations of a decadal
+cycle, which is too few to constrain decadal power regardless of estimator;
+$\texttt{nperseg}=240$ would resolve the band but with only $\nu\approx6$
+degrees of freedom. The consequence is interpretive rather than technical:
+the decadal experiment imposes variance that the observations cannot
+constrain, and must be read as a prescribed sensitivity test
+(Sect.~\ref{sec:demo}) rather than as a perturbation of an observed decadal
+spectrum. We prefer to state this plainly rather than to imply a constraint
+the data cannot supply.
+\emph{Deterministic amplitude spectrum.} All members share one amplitude
+spectrum and differ only in phase, so between-member variability
+underestimates true amplitude variability; an amplitude-randomising
+extension is a natural next step.
+\emph{Tail model.} The normal tail underestimates right-skewed extremes
+beyond the observed range; a generalised Pareto tail \citep{coles2001} is
+the principled upgrade.
+\emph{Band edges and boundaries.} Band scaling is applied as an untapered
+step at the band edges, and the annual and decadal band definitions,
+although physically motivated, are not unique; a tapered transition and a
+boundary-sensitivity test are straightforward refinements.
+\emph{EOF truncation and mode assumptions.} The field pipeline retains only
+the leading $K$ modes, so variance in the discarded high-order modes---often
+the small-scale, less spatially coherent component---is not reproduced;
+$K$ trades spatial fidelity against the number of PC series that must be
+well-fitted. The synthetic spatial patterns are exactly the observed EOFs and
+are held fixed, so the method reproduces the observed modes of variability but
+cannot generate spatial patterns absent from the training field. Each PC is
+synthesised independently, which reproduces the marginal spectrum of every
+mode but discards any cross-mode phase coupling (e.g.\ propagating features
+represented jointly by two modes); and EOFs near-degenerate in variance are
+not robustly separable \citep{north1982}, so individual high-order patterns
+should not be over-interpreted. The per-cell mean and seasonal cycle are
+assumed stationary across the synthetic horizon, as in the scalar case.
+
+
+% #####################################################################
+\conclusions
+% #####################################################################
+
+We have presented a method for generating synthetic SMB forcing that
+reproduces the observed marginal distribution and power spectrum of a short
+record and permits controlled perturbation of individual frequency bands.
+The three advances---distribution-preserving synthesis (A1), semi-parametric
+tail extrapolation (A2), and frequency-band variance control (A3)---together
+convert Fourier phase randomisation into an instrument for controlled
+ice-sheet forcing experiments, and a fourth (A4) generalises the identical
+engine to spatially coherent fields through an EOF decomposition. Calibrated
+on RACMO2.4p1 SMB for the Pine Island Glacier basin \citep{vandalum2025}, the
+generator preserves the mean exactly and reproduces the observed spectrum
+within its $95\,\%$ confidence interval, and it passes an out-of-sample
+calibration-split test. Band scaling perturbs a named band while holding the
+mean, marginal distribution and seasonal cycle fixed, giving experiments that
+differ only in spectral structure. Applied per mode, the same engine produces
+synthetic fields that reproduce the observed spatial mean and variance
+patterns and per-mode spectra while preserving spatial coherence by
+construction. The generator is the forcing engine for the ice-dynamic
+experiments of the companion study \citep{markovsky_inprep}, in both
+spatially uniform and spatially resolved form, and generalises to other
+scalar and gridded climate series that are stationary after simple
+detrending.
+
+
+% #####################################################################
+%\codeavailability{ ... Zenodo DOI ... }
+%\dataavailability{ RACMO2.4p1: \citet{vandalum2025}; generated ensembles archived with Experiment metadata at [[DOI]]. }
+%\appendix
+%\section{Semi-parametric inverse CDF and Welch CI derivations}\label{app:eqs}
+%\section{Sensitivity analyses (nperseg, band boundaries, plotting positions, tail model)}\label{app:sens}
+
+\bibliographystyle{copernicus}
+\bibliography{references}

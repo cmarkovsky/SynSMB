@@ -173,6 +173,7 @@ class SpatialPreprocessor:
         self,
         residuals: xr.DataArray,
         add_mean: bool = False,
+        seasonal_amp_scale: float = 1.0,
     ) -> xr.DataArray:
         """
         Restore the seasonal cycle from stochastic residuals.
@@ -190,6 +191,14 @@ class SpatialPreprocessor:
             If True, also add field_mean back. Default False (let
             SMBFieldGenerator handle the mean). Set True only for
             round-trip validation.
+        seasonal_amp_scale : float
+            Multiplier on the seasonal-cycle amplitude (an *amplitude*
+            factor; pass sqrt(seasonal_variance_scale)). Default 1.0
+            reproduces the observed climatology exactly. Values >1 amplify
+            the deterministic seasonal cycle to represent a stronger annual
+            forcing, mirroring the 1-D Preprocessor. Mean-safe: the seasonal
+            anomalies sum to zero over the twelve months, so scaling them
+            leaves the record mean unchanged.
 
         Returns
         -------
@@ -197,9 +206,10 @@ class SpatialPreprocessor:
         """
         self._check_fitted()
 
-        # Restore seasonal anomalies
+        # Restore seasonal anomalies (optionally amplitude-scaled)
         reconstructed = (
-            residuals.groupby("time.month") + self._seasonal_means
+            residuals.groupby("time.month")
+            + seasonal_amp_scale * self._seasonal_means
         )
 
         # Optionally restore the field mean

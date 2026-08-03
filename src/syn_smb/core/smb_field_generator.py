@@ -83,6 +83,8 @@ class SMBFieldGenerator:
         self.ss_per_pc:     list[SpectralSynthesizer]  = []
 
         self._field_mean:  xr.DataArray | None = None
+        self._lat:         xr.DataArray | None = None
+        self._lon:         xr.DataArray | None = None
         self._basin_mask:  xr.DataArray | None = None
         self._spatial_dims: list[str]          = []
         self._n_obs:        int                = 0
@@ -96,6 +98,7 @@ class SMBFieldGenerator:
         self,
         field: xr.DataArray,
         lat:   xr.DataArray | None = None,
+        lon:   xr.DataArray | None = None,
     ) -> SMBFieldGenerator:
         """
         Fit the full 2D pipeline on a basin-masked SMB field.
@@ -117,11 +120,13 @@ class SMBFieldGenerator:
         self._spatial_dims = [d for d in field.dims if d != "time"]
         self._n_obs        = field.sizes["time"]
 
-        # Infer basin mask from NaN pattern
+        # Infer basin mask from NaN pattern and store coordinates for plotting
         self._basin_mask = xr.DataArray(
             np.all(np.isfinite(field.values), axis=0),
             dims=self._spatial_dims,
         )
+        self._lat = lat
+        self._lon = lon
         print(f"  Valid cells : {int(self._basin_mask.sum())}")
 
         # ── Step 2: SpatialPreprocessor ──────────────────────────────
@@ -169,7 +174,6 @@ class SMBFieldGenerator:
 
             # Gaussian rank transform — transform() fits and applies in one call
             gt   = GaussianTransform()
-            gt.fit(pc_da)
             g_pc = gt.transform(pc_da)
             self.gt_per_pc.append(gt)
 
@@ -222,30 +226,46 @@ class SMBFieldGenerator:
                 ss = self.ss_per_pc[i]
 
                 if gt is None or ss is None:
-                    # Near-zero variance mode — leave as zeros
                     pcs_syn[:, i] = 0.0
                     continue
 
-                # Synthesise in Gaussian space
-                g_syn = ss.synthesize(
-                    experiment = experiment,
-                    n_years    = experiment.n_years,
-                    seed       = experiment.seed,
-                    member     = m,
+                # Each (member, mode) pair gets an independent RNG seeded
+                # by a combination of experiment seed + member + mode index,
+                # ensuring all members and all modes are statistically
+                # independent while remaining reproducible.
+                rng = np.random.default_rng(
+                    experiment.seed + m + i * (experiment.n_members + 1)
                 )
+
+                # Synthesise one member in Gaussian space
+                g_syn_raw = ss.synthesize(
+                    n_years     = experiment.n_years,
+                    n_members   = 1,
+                    band_scales = experiment.band_scales,
+                    rng         = rng,
+                )
+                # synthesize() may return (1, T) or (T,) — flatten to 1D
+                g_syn = np.asarray(g_syn_raw).flatten()
 
                 # Back-transform to physical PC units
                 pc_syn = gt.inverse_transform(g_syn)
-                pcs_syn[:, i] = pc_syn
+                pcs_syn[:, i] = np.asarray(pc_syn).flatten()
 
             # Reconstruct spatial residual field from synthetic PCs
             residuals_syn = self.eof.inverse_transform(
                 pcs_syn, time_coord=time_syn
             )
 
-            # Restore seasonal cycle (add_mean=False — we add mean below)
+            # Restore seasonal cycle (add_mean=False — we add mean below).
+            # seasonal_amp_scale couples the annual-band experiments: a
+            # stronger seasonal cycle is applied as an amplitude factor on the
+            # per-cell climatology. getattr fallback = 1.0 so this is safe even
+            # if the 1-D Experiment seasonal-scaling fix is not yet applied
+            # (Experiment.seasonal_amplitude_factor == sqrt(seasonal_scale)).
+            seas_amp = getattr(experiment, "seasonal_amplitude_factor", 1.0)
             field_syn = self.preprocessor.inverse_transform(
-                residuals_syn, add_mean=False
+                residuals_syn, add_mean=False,
+                seasonal_amp_scale=seas_amp,
             )
 
             # Restore per-grid-cell climatological mean
@@ -343,7 +363,7 @@ class SMBFieldGenerator:
         )
         field = loader.load()
         gen   = cls(n_modes=n_modes, nperseg=nperseg)
-        gen.fit(field, lat=loader.lat)
+        gen.fit(field, lat=loader.lat, lon=loader.lon)
         return gen
 
     # ------------------------------------------------------------------

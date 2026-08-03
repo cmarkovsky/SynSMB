@@ -44,6 +44,9 @@ import regionmask
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
+# generate_racmo_catalog.py
+from config import RACMO_PATH, SHP_PATH, SECTORS_DIR, BASIN_NAMES
+
 
 try:
     import cartopy.crs as ccrs

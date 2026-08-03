@@ -122,7 +122,7 @@ DEFAULT_BAND_LABELS  = [
 _BAND_COLORS = ["#56B4E9", "#E69F00", "#009E73", "#D55E00", "#CC79A7"]
 
 
-class BandAnalyser:
+class BandAnalyzer:
     """
     Data-driven identification of dominant SMB frequency bands.
 

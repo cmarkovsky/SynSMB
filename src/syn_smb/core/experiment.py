@@ -87,6 +87,12 @@ class Experiment:
     band_scales: list[tuple[float, float, float]] | None = None
     name:        str                                     = "baseline"
     description: str                                     = ""
+    seasonal_scale: float                                = 1.0
+    # seasonal_scale is a VARIANCE factor on the deterministic seasonal cycle
+    # (default 1.0 = observed climatology). It is applied at reconstruction as
+    # an amplitude multiplier sqrt(seasonal_scale); see seasonal_amplitude_factor.
+    # Values > 1 amplify the annual-timescale forcing (a stronger seasonal
+    # cycle); it is mean-safe because the monthly anomalies sum to zero.
 
     def __post_init__(self) -> None:
         self._validate()
@@ -132,6 +138,12 @@ class Experiment:
                         f"got {factor}. Use 0.0 to fully suppress a band."
                     )
 
+        if self.seasonal_scale < 0:
+            raise ValueError(
+                f"seasonal_scale must be non-negative, got {self.seasonal_scale}. "
+                f"Use 1.0 for the observed seasonal cycle, 0.0 to remove it."
+            )
+
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
@@ -156,6 +168,17 @@ class Experiment:
     def has_band_scaling(self) -> bool:
         """True if any band scaling is applied."""
         return self.band_scales is not None and len(self.band_scales) > 0
+
+    @property
+    def seasonal_amplitude_factor(self) -> float:
+        """
+        Amplitude multiplier for the deterministic seasonal cycle.
+
+        seasonal_scale is a variance factor; the seasonal cycle enters the
+        reconstruction as sqrt(seasonal_scale) * s(m). Pass this value to
+        Preprocessor.inverse_transform(..., seasonal_amp_scale=...).
+        """
+        return float(np.sqrt(self.seasonal_scale))
 
     # ------------------------------------------------------------------
     # Preset constructors
@@ -200,10 +223,12 @@ class Experiment:
             n_members=n_members,
             seed=seed,
             band_scales=[(pmin, pmax, factor)],
+            seasonal_scale=factor,
             name=f"annual_enhanced_{factor}x",
             description=(
-                f"Annual band ({pmin}–{pmax} yr) PSD scaled by {factor}x. "
-                f"Variance in the annual band amplified by {factor}x."
+                f"Annual band ({pmin}–{pmax} yr) PSD scaled by {factor}x and "
+                f"seasonal-cycle variance scaled by {factor}x. Amplifies the "
+                f"annual-timescale forcing (stochastic band + deterministic cycle)."
             ),
         )
 
@@ -225,10 +250,12 @@ class Experiment:
             n_members=n_members,
             seed=seed,
             band_scales=[(pmin, pmax, factor)],
+            seasonal_scale=factor,
             name=f"annual_suppressed_{factor}x",
             description=(
-                f"Annual band ({pmin}–{pmax} yr) PSD scaled by {factor}x. "
-                f"Variance in the annual band reduced by {1/factor:.0f}x."
+                f"Annual band ({pmin}–{pmax} yr) PSD scaled by {factor}x and "
+                f"seasonal-cycle variance scaled by {factor}x. Suppresses the "
+                f"annual-timescale forcing (stochastic band + deterministic cycle)."
             ),
         )
 
@@ -329,6 +356,7 @@ class Experiment:
             "n_members":   self.n_members,
             "seed":        self.seed,
             "band_scales": self.band_scales,
+            "seasonal_scale": self.seasonal_scale,
         }
 
     @classmethod
@@ -346,6 +374,7 @@ class Experiment:
             n_members   = d["n_members"],
             seed        = d["seed"],
             band_scales = band_scales,
+            seasonal_scale = d.get("seasonal_scale", 1.0),
         )
 
     # ------------------------------------------------------------------
@@ -372,6 +401,9 @@ class Experiment:
                 )
         else:
             print("  band_scales: None (baseline)")
+        if self.seasonal_scale != 1.0:
+            print(f"  seasonal_scale: {self.seasonal_scale} "
+                  f"(amplitude x{self.seasonal_amplitude_factor:.3f})")
 
     def __repr__(self) -> str:
         bands = f", band_scales={self.band_scales}" if self.band_scales else ""

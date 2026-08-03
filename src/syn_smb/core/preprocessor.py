@@ -247,6 +247,7 @@ class Preprocessor:
         self,
         anomaly: xr.DataArray,
         add_trend: bool = False,
+        seasonal_amp_scale: float = 1.0,
     ) -> xr.DataArray:
         """
         Add deterministic components back to a stochastic anomaly series.
@@ -264,6 +265,13 @@ class Preprocessor:
             observed trend over 1000 years is physically unreasonable.
             Set to True only when reconstructing the training period for
             validation purposes.
+        seasonal_amp_scale : float
+            Amplitude multiplier on the deterministic seasonal cycle.
+            Default 1.0 reproduces the observed climatology exactly. Pass
+            Experiment.seasonal_amplitude_factor (= sqrt(seasonal_scale)) to
+            amplify or suppress the annual-timescale forcing. Mean-safe: the
+            twelve monthly anomalies sum to zero, so scaling them does not
+            shift the record mean.
 
         Returns
         -------
@@ -285,9 +293,11 @@ class Preprocessor:
 
         result = anomaly.copy()
 
-        # Add seasonal cycle first (before trend, to match removal order)
+        # Add seasonal cycle first (before trend, to match removal order).
+        # seasonal_amp_scale amplifies/suppresses the deterministic cycle;
+        # 1.0 is the observed climatology. Mean-safe (anomalies sum to zero).
         if self.remove_seasonal and self.seasonal_cycle is not None:
-            result = result.groupby('time.month') + self.seasonal_cycle
+            result = result.groupby('time.month') + seasonal_amp_scale * self.seasonal_cycle
 
         # Optionally add trend — off by default for synthetic series
         if add_trend and self.remove_trend and self.trend_coeffs is not None:

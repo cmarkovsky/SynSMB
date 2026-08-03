@@ -58,24 +58,30 @@ def _clean(value) -> str | None:
 # ======================================================================
 
 KNOWN_BASINS: dict[str, dict] = {
-    "PineIsland": {"region": "West_Antarctica", "subregion": "Ipp-J",  "name": "PineIsland"},
+    "Pine_Island": {"region": "West_Antarctica", "subregion": "Ipp-J",  "name": "PineIsland"},
     "Thwaites":   {"region": "West_Antarctica", "subregion": "Ipp-H",  "name": "Thwaites"},
     "Getz":       {"region": "West_Antarctica", "subregion": "Ipp-F",  "name": "Getz"},
     "Dotson":     {"region": "West_Antarctica", "subregion": "Ipp-G",  "name": "Dotson"},
     "Crosson":    {"region": "West_Antarctica", "subregion": "Ipp-G",  "name": "Crosson"},
     "Abbott":     {"region": "West_Antarctica", "subregion": "Ipp-E",  "name": "Abbott"},
     "Kohler":     {"region": "West_Antarctica", "subregion": "Ipp-G",  "name": "Kohler"},
+    "LarsenC":   {"region": "West_Antarctica", "subregion": "Ipp-K",  "name": "Larsen C"},
+    "Ronne":     {"region": "West_Antarctica", "subregion": "Ipp-L",  "name": "Ronne"},
+    "Ross_East":    {"region": "West_Antarctica", "subregion": "Ipp-M",  "name": "Ross East"},
 }
 
 # Approximate SMB mean range (m w.e. a⁻¹) per NAME for sanity checks
 _EXPECTED_MEAN: dict[str, tuple[float, float]] = {
-    "PineIsland": (0.01, 0.15),
+    "Pine_Island": (0.01, 0.15),
     "Thwaites":   (0.01, 0.20),
     "Getz":       (0.30, 0.80),
     "Dotson":     (0.20, 0.60),
     "Crosson":    (0.20, 0.60),
     "Abbott":     (0.10, 0.50),
     "Kohler":     (0.01, 0.15),
+    "LarsenC":   (0.01, 0.50),
+    "Ronne":     (0.01, 0.50),
+    "Ross_East":    (0.01, 0.50),
 }
 
 

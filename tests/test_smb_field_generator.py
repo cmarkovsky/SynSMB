@@ -25,7 +25,7 @@ import pytest
 import xarray as xr
 
 from syn_smb import SMBFieldGenerator
-from syn_smb import Experiment
+from syn_smb          import Experiment
 
 
 # ======================================================================
@@ -245,12 +245,7 @@ class TestStatisticalProperties:
         smb    = baseline_ds["smb_syn"]
         inside = _MASK
 
-        obs_mean = float(gen.field_mean.values[inside].mean())
-        syn_mean = float(
-            smb.values[:, :, inside[0]:, :]
-            .mean()
-        )
-        # Recompute properly
+        obs_mean = float(np.nanmean(gen.field_mean.values[inside]))
         syn_mean = float(np.nanmean(smb.values))
         ratio    = abs(syn_mean / obs_mean) if obs_mean != 0 else 0.0
 
@@ -434,12 +429,11 @@ def run_real_data(
 
     print(f"\nSynthetic field shape: {dict(smb.sizes)}")
 
-    # Basin-mean time series from 2D synthetic field
-    syn_mean_ts = np.nanmean(smb.values[:, :, inside[0]:, :], axis=(1, 2, 3))
-    # Correct approach: mean over valid cells per member per timestep
-    syn_vals    = smb.values  # (member, time, rlat, rlon)
-    obs_vals    = field.values  # (time, rlat, rlon)
+    # Extract numpy arrays — NaN outside basin, so nanmean handles masking
+    obs_vals = field.values   # (time, rlat, rlon)
+    syn_vals = smb.values     # (member, time, rlat, rlon)
 
+    # NaN outside the basin, so nanmean over spatial dims gives basin mean
     obs_basin_mean = float(np.nanmean(obs_vals))
     syn_basin_mean = float(np.nanmean(syn_vals))
 
@@ -480,13 +474,9 @@ def run_real_data(
     plt.colorbar(pcm, ax=ax, label="m w.e.")
     ax.set_title("Synthetic time-mean SMB\n(member 0, 100 yr)")
 
-    # Basin-mean time series comparison
+    # Basin-mean time series — nanmean over spatial dims handles NaN mask
     ax = axes[2]
-    obs_ts  = np.nanmean(obs_vals[:, inside], axis=1)
-    syn_ts0 = np.nanmean(syn_vals[0, :, :, :][:, inside[0]:, :]
-                          .reshape(100*12, -1), axis=1)
-    # Simplified: just use nanmean over valid spatial indices
-    # Observed
+    obs_ts = np.nanmean(obs_vals.reshape(obs_vals.shape[0], -1), axis=1)
     ax.plot(obs_ts, color="tab:blue", lw=1, alpha=0.8, label="Observed")
     ax.axhline(np.nanmean(obs_ts), color="tab:blue", lw=1.5,
                linestyle="--", alpha=0.6)
